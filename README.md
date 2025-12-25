@@ -1,304 +1,133 @@
 # EDGE GWAS Implementation Guide
 
 ## Version 0.0.0 (Under Public Testing)
+⚠️ **Note:** This package is currently under active development and public testing.
 
 ## Overview
 
-EDGE (Encoding-based Differential Genetic Effects) is a GWAS method that identifies optimal genetic encoding models for each variant, testing all possible inheritance patterns instead of assuming additive effects.
+EDGE-GWAS (Encoding Deviation Genotypic Effects GWAS) identifies nonadditive SNP effects using flexible genetic encoding, rather than assuming additive inheritance.
 
 **Key Features:**
-- Flexible genetic encoding (recessive, additive, dominant, etc.)
+- Two-stage analysis: calculate alpha on training data, apply to test data
+- Detects recessive, dominant, and over-dominant effects
 - Handles binary and quantitative outcomes
-- Publication-ready visualizations
+- Support for PLINK format data
 
-## Statistical Model
+## Installation
 
-**Regression Model:**
+$$$bash
+# Upgrade pip first
+pip install --upgrade pip
 
-$$E(Y | SNP_{Het}, SNP_{HA}, COV_i) = \beta_0 + \beta_{Het} \cdot SNP_{Het} + \beta_{HA} \cdot SNP_{HA} + \sum_{i} \beta_{cov_i} \cdot COV_i$$
-
-**Encoding Parameter:**
-
-$$\alpha = \frac{\beta_{Het}}{\beta_{HA}}$$
-
-## Installation & Setup
-
-### Option 1: Install from GitHub (Recommended)
-
-```bash
+# Install edge-gwas
 pip install git+https://github.com/nicenzhou/edge-gwas.git
-```
 
-### Option 2: Manual Installation
-
-If you prefer to clone the repository:
-
-```bash
-# Clone the repository
-git clone https://github.com/nicenzhou/edge-gwas.git
-cd edge-gwas
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install the package
-pip install -e .
-```
-
-### Required Dependencies
-
-```bash
-pip install pandas numpy scipy statsmodels matplotlib seaborn
-```
-
-### For UK Biobank RAP Users
-
-```bash
-# Additional dependencies for UK Biobank
-# Usually no need
-pip install dxpy dxdata
-```
-
-### Verify Installation
-
-```python
-# Test import
-try:
-    from edge_gwas import EDGEAnalysis
-    print("✓ edge-gwas installed successfully")
-except ImportError as e:
-    print(f"✗ Installation failed: {e}")
-```
-
-## Package Structure
-
-<pre>
-edge-gwas/
-├── edge_gwas/
-│   ├── __init__.py
-│   ├── core.py
-│   ├── utils.py
-│   └── io_handlers.py
-├── tests/
-│   ├── __init__.py
-│   └── test_core.py
-├── examples/
-│   ├── example_binary_outcome.py
-│   └── example_continuous_outcome.py
-├── setup.py
-├── requirements.txt
-├── README.md
-├── LICENSE
-└── .gitignore
-</pre>
+# Verify (use python3 on Mac/Linux)
+python3 -c "from edge_gwas import EDGEAnalysis; print('✓ Installed successfully')"
+$$$
 
 ## Quick Start
 
-### 1. Load Data
+### 1. Import and Initialize
 
-```python
+$$$python
 import pandas as pd
-import numpy as np
-from edge_gwas import EDGEAnalysis
+from edge_gwas import EDGEAnalysis, load_plink_data, prepare_phenotype_data
 
-# Load your genotype data
-# Format: rows = samples, columns = SNPs
-# Values: 0 (homozygous reference), 1 (heterozygous), 2 (homozygous alternate)
-genotype_df = pd.read_csv('genotype_data.csv')
+# Initialize
+edge = EDGEAnalysis(
+    outcome_type='binary',    # or 'continuous'
+    maf_threshold=0.01,
+    verbose=True
+)
+$$$
 
-# Load phenotype and covariate data
-# Format: rows = samples, columns = phenotype + covariates
-pheno_cov_df = pd.read_csv('phenotype_covariates.csv')
+### 2. Load Data
 
-# Example structure:
-# pheno_cov_df columns: ['sample_id', 'phenotype', 'sex', 'age', 'PC1', 'PC2', ..., 'PC10']
-```
+$$$python
+# Load PLINK format genotype data
+genotype_data, variant_info = load_plink_data(
+    plink_prefix='path/to/plink_files',
+    chromosome=None  # None for all, or specify chromosome number
+)
 
-### 2. Prepare Phenotype
+# Load phenotype data
+# Index: sample IDs matching genotype data
+# Columns: outcome + covariates
+phenotype_df = pd.read_csv('phenotype_file.csv', index_col=0)
 
-```python
-# Binary trait example (e.g., disease status)
-# Ensure phenotype is coded as 0 (control) and 1 (case)
-pheno_cov_df['disease_status'] = pheno_cov_df['disease_status'].astype(int)
-
-# Quantitative trait example (e.g., BMI, height)
-# Remove outliers (optional)
-mean_bmi = pheno_cov_df['bmi'].mean()
-std_bmi = pheno_cov_df['bmi'].std()
-pheno_cov_df = pheno_cov_df[
-    (pheno_cov_df['bmi'] >= mean_bmi - 3*std_bmi) & 
-    (pheno_cov_df['bmi'] <= mean_bmi + 3*std_bmi)
-]
-
-# Define covariates
-covariates = ['sex', 'age', 'PC1', 'PC2', 'PC3', 'PC4', 'PC5', 
+# Define outcome and covariates
+outcome = 'disease'  # your outcome variable name
+covariates = ['age', 'sex', 'PC1', 'PC2', 'PC3', 'PC4', 'PC5', 
               'PC6', 'PC7', 'PC8', 'PC9', 'PC10']
 
-# QC: Remove samples with missing data
-pheno_cov_df = pheno_cov_df.dropna(subset=['disease_status'] + covariates)
-
-print(f"Total samples after QC: {len(pheno_cov_df)}")
-```
-
-### 3. Run EDGE Analysis
-
-```python
-# Initialize EDGE
-edge = EDGEAnalysis(
-    phenotype_name='disease_status',  # or 'bmi' for quantitative
-    phenotype_type='binary',           # or 'quantitative'
+# Prepare phenotype (QC and formatting)
+phenotype_df = prepare_phenotype_data(
+    phenotype_df,
+    outcome=outcome,
     covariates=covariates,
-    maf_threshold=0.01,
-    hwe_threshold=1e-6,
-    geno_threshold=0.05
+    remove_outliers=True  # For continuous outcomes
+)
+$$$
+
+### 3. Run Two-Stage Analysis
+
+$$$python
+# Split into training and test sets
+train_samples = phenotype_df.sample(frac=0.5, random_state=42).index
+test_samples = phenotype_df.index.difference(train_samples)
+
+# Run complete analysis
+alpha_df, gwas_df = edge.run_full_analysis(
+    train_genotype=genotype_data.loc[train_samples],
+    train_phenotype=phenotype_df.loc[train_samples],
+    test_genotype=genotype_data.loc[test_samples],
+    test_phenotype=phenotype_df.loc[test_samples],
+    outcome=outcome,
+    covariates=covariates,
+    variant_info=variant_info,
+    output_prefix='edge_results'
 )
 
-# Run analysis for all SNPs
-results = []
+# Check results
+print(f"Tested {len(gwas_df)} variants")
+print(f"Significant (p < 5e-8): {(gwas_df['pval'] < 5e-8).sum()}")
+$$$
 
-for snp_name in genotype_df.columns:
-    # Get genotype for this SNP
-    genotype = genotype_df[snp_name].values
-    phenotype = pheno_cov_df['disease_status'].values
-    covariates_matrix = pheno_cov_df[covariates]
-    
-    # Run EDGE test
-    result = edge.run_snp_test(genotype, phenotype, covariates_matrix)
-    
-    if result is not None:
-        result['SNP'] = snp_name
-        results.append(result)
+## Key Output Files
 
-# Convert to DataFrame
-results_df = pd.DataFrame(results)
+**Alpha values** (`edge_results_alpha.txt`):
+- `variant_id`: SNP ID
+- `alpha_value`: Encoding parameter (β_het/β_hom)
+- `eaf`: Effect allele frequency
+- `coef_het`, `coef_hom`: Coefficients
 
-# Save results
-results_df.to_csv('edge_gwas_results.txt', sep='\t', index=False)
-print(f"Analysis complete. {len(results_df)} SNPs passed QC and were tested.")
-```
-
-### 4. Alternative: Analyze by Chromosome
-
-```python
-# If you have data split by chromosome
-chromosomes = range(1, 23)  # Chromosomes 1-22
-
-for chrom in chromosomes:
-    print(f"Processing chromosome {chrom}...")
-    
-    # Load chromosome-specific genotype data
-    geno_file = f'genotype_chr{chrom}.csv'
-    genotype_df = pd.read_csv(geno_file)
-    
-    results = []
-    for snp_name in genotype_df.columns:
-        genotype = genotype_df[snp_name].values
-        phenotype = pheno_cov_df['disease_status'].values
-        covariates_matrix = pheno_cov_df[covariates]
-        
-        result = edge.run_snp_test(genotype, phenotype, covariates_matrix)
-        
-        if result is not None:
-            result['SNP'] = snp_name
-            result['CHR'] = chrom
-            results.append(result)
-    
-    # Save chromosome results
-    results_df = pd.DataFrame(results)
-    results_df.to_csv(f'edge_results_chr{chrom}.txt', sep='\t', index=False)
-    print(f"Chromosome {chrom}: {len(results_df)} SNPs tested")
-```
-
-### 5. UK Biobank Specific Implementation
-
-```python
-# For UK Biobank users on RAP platform
-import dxdata
-
-# Connect to UK Biobank dataset
-dataset_id = "your_dataset_id"
-participant = dxdata.load_dataset(id=dataset_id)
-
-# Define fields to retrieve
-fields = [
-    "eid",                              # Participant ID
-    "p31",                              # Sex
-    "p21022",                           # Age at recruitment
-] + [f"p22009_a{i}" for i in range(1, 11)] + [  # Principal components 1-10
-    "p41270"                            # ICD-10 diagnoses
-]
-
-# Retrieve as pandas DataFrame
-participant_df = participant.retrieve_fields(
-    fields=fields, 
-    engine=dxdata.connect()
-).to_pandas()
-
-# Create binary phenotype from ICD-10 codes
-# Example: Type 2 Diabetes (E11)
-participant_df['diabetes_t2'] = participant_df['p41270'].apply(
-    lambda x: 1 if 'E11' in str(x) else 0
-)
-
-# Rename columns
-participant_df.rename(columns={
-    'p31': 'sex',
-    'p21022': 'age',
-    **{f'p22009_a{i}': f'PC{i}' for i in range(1, 11)}
-}, inplace=True)
-
-# Define covariates
-covariates = ['sex', 'age'] + [f'PC{i}' for i in range(1, 11)]
-
-# Remove missing data
-participant_df = participant_df.dropna(subset=['diabetes_t2'] + covariates)
-
-# Retrieve genotype data for specific chromosome
-# Use UK Biobank genotype extraction methods here
-# Then run EDGE analysis as shown above
-```
-
-## Output Files
-
-### Main Results: `edge_results_chr{N}.txt`
-
-| Column | Description |
-|--------|-------------|
-| CHR | Chromosome |
-| SNP | rsID |
-| BP | Position |
-| A1 | Effect allele |
-| A2 | Reference allele |
-| MAF | Minor allele frequency |
-| BETA_HET | Heterozygous effect |
-| BETA_HA | Homozygous alternate effect |
-| ALPHA | Encoding parameter |
-| ENCODING | Inheritance model |
-| P_EDGE | EDGE p-value |
-| P_ADD | Additive p-value |
+**GWAS results** (`edge_results_gwas.txt`):
+- `variant_id`: SNP ID
+- `coef`: Effect coefficient
+- `pval`: P-value
+- `alpha_value`: Applied alpha
+- `std_err`, `stat`: Statistics
 
 ## Visualization
 
 ### Manhattan Plot
 
-```python
+$$$python
 import matplotlib.pyplot as plt
 import numpy as np
 
-def manhattan_plot(results_files, output='manhattan.png'):
-    # Combine results
-    results = pd.concat([pd.read_csv(f, sep='\t') for f in results_files])
-    results['-log10p'] = -np.log10(results['P_EDGE'])
+def manhattan_plot(gwas_df, output='manhattan.png'):
+    gwas_df['-log10p'] = -np.log10(gwas_df['pval'])
     
-    # Plot
     fig, ax = plt.subplots(figsize=(14, 6))
     colors = ['#1f77b4', '#ff7f0e']
     x_pos = 0
     
-    for chrom in range(1, 23):
-        data = results[results['CHR'] == chrom]
+    for chrom in sorted(gwas_df['chr'].unique()):
+        data = gwas_df[gwas_df['chr'] == chrom]
         ax.scatter(x_pos + np.arange(len(data)), data['-log10p'], 
-                  c=colors[chrom % 2], s=2, alpha=0.7)
+                  c=colors[int(chrom) % 2], s=2, alpha=0.7)
         x_pos += len(data)
     
     ax.axhline(-np.log10(5e-8), color='red', linestyle='--', label='p=5e-8')
@@ -307,23 +136,18 @@ def manhattan_plot(results_files, output='manhattan.png'):
     ax.set_title('EDGE GWAS Manhattan Plot')
     plt.savefig(output, dpi=300, bbox_inches='tight')
 
-# Usage
-files = [f'/path/to/output/edge_results_chr{i}.txt' for i in range(1, 23)]
-manhattan_plot(files)
-```
+manhattan_plot(gwas_df)
+$$$
 
 ### QQ Plot
 
-```python
+$$$python
 from scipy import stats
 
-def qq_plot(results_files, output='qq_plot.png'):
-    # Combine and filter
-    results = pd.concat([pd.read_csv(f, sep='\t') for f in results_files])
-    pvals = results['P_EDGE'].dropna()
+def qq_plot(gwas_df, output='qq_plot.png'):
+    pvals = gwas_df['pval'].dropna()
     pvals = pvals[pvals > 0]
     
-    # Calculate expected vs observed
     n = len(pvals)
     observed = -np.log10(np.sort(pvals))
     expected = -np.log10(np.arange(1, n + 1) / (n + 1))
@@ -332,7 +156,6 @@ def qq_plot(results_files, output='qq_plot.png'):
     chisq = stats.chi2.ppf(1 - pvals, df=1)
     lambda_gc = np.median(chisq) / stats.chi2.ppf(0.5, df=1)
     
-    # Plot
     fig, ax = plt.subplots(figsize=(8, 8))
     ax.scatter(expected, observed, s=10, alpha=0.5)
     max_val = max(expected.max(), observed.max())
@@ -341,65 +164,30 @@ def qq_plot(results_files, output='qq_plot.png'):
             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
     ax.set_xlabel('Expected -log₁₀(p)')
     ax.set_ylabel('Observed -log₁₀(p)')
-    ax.set_title('QQ Plot')
     plt.savefig(output, dpi=300, bbox_inches='tight')
-    print(f"Genomic inflation factor: {lambda_gc:.3f}")
 
-# Usage
-files = [f'/path/to/output/edge_results_chr{i}.txt' for i in range(1, 23)]
-qq_plot(files)
-```
-
-## Best Practices
-
-1. **QC Filters:** MAF ≥ 0.01, genotype missingness < 5%, HWE p > 1e-6
-2. **Covariates:** Always include sex, age, and 10 PCs
-3. **Sample Size:** Cases ≥ 1000, Controls ≥ 5000 for binary traits
-4. **Significance:** Genome-wide threshold p < 5×10⁻⁸
-5. **λ Interpretation:** λ = 1.0-1.05 acceptable; >1.1 suggests stratification
-
-## Applications
-
-EDGE has been successfully applied in large-scale genomic studies:
-
-- **UK Biobank (UKB)**: Genome-wide analyses across diverse phenotypes
-- **Million Veteran Program (MVP)**: Large-scale veteran health genomics research
-
-### Implementation Code
-
-For the complete EDGE methodology and detailed implementation, see:
-
-**Original EDGE Method:**
-- Repository: [https://github.com/nicenzhou/EDGE](https://github.com/nicenzhou/EDGE)
-- Publication: [EDGE GWAS_Preprint](https://doi.org/10.1101/2023.06.01.23290857)
+qq_plot(gwas_df)
+$$$
 
 ## Citation
 
-If you use EDGE in your research, please cite: 
-Zhou, J., Rico, A. L. G., Guare, L., Million Veteran Program, Chang, K. M., Tsao, P. S., Assimes, T. L., Verma, S. S., & Hall, M. A. (2023). Flexibly encoded genome-wide association study identifies novel nonadditive genetic risk variants for cardiometabolic traits. *medRxiv*, 2023.06.01.23290857. https://doi.org/10.1101/2023.06.01.23290857
+Zhou, J., et al. (2023). Flexibly encoded genome-wide association study identifies novel nonadditive genetic risk variants for cardiometabolic traits. *medRxiv*, 2023.06.01.23290857. https://doi.org/10.1101/2023.06.01.23290857
 
-**BibTeX:**
-```bibtex
-@article{zhou2023EDGEAnalysis,
+$$$bibtex
+@article{zhou2023edgegwas,
   title={Flexibly encoded genome-wide association study identifies novel nonadditive genetic risk variants for cardiometabolic traits},
-  author={Zhou, Jiayan and Rico, Andre Luis Garao and Guare, Lindsay and Million Veteran Program and Chang, Kyong-Mi and Tsao, Philip S and Assimes, Themistocles L and Verma, Shefali Setia and Hall, Molly Ann},
+  author={Zhou, Jiayan and Rico, Andre Luis Garao and Guare, Lindsay and others},
   journal={medRxiv},
-  pages={2023--06},
   year={2023},
-  publisher={Cold Spring Harbor Laboratory Press},
   doi={10.1101/2023.06.01.23290857}
 }
-```
+$$$
 
 ## Contact
 
-**Corresponding Author:**  
-Molly Ann Hall - molly.hall@pennmedicine.upenn.edu
-
-**For questions about the code:**  
-Jiayan Zhou - jyzhou@stanford.edu
+**Corresponding Author:** Molly Ann Hall - molly.hall@pennmedicine.upenn.edu  
+**Code Questions:** Jiayan Zhou - jyzhou@stanford.edu
 
 ## License
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-[![GPL Logo](https://www.gnu.org/graphics/gplv3-88x31.png)](https://www.gnu.org/licenses/gpl-3.0)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
