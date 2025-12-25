@@ -10,7 +10,7 @@ EDGE-GWAS (Elastic Data-Driven Encoding GWAS) identifies nonadditive SNP effects
 
 **Key Features:**
 - Two-stage analysis: calculate alpha on training data, apply to test data
-- Detects recessive, additive, dominant, and over-dominant effects
+- Detects under-recessive, recessive, additive, dominant, and over-dominant effects in a continuous scale
 - Handles binary and quantitative outcomes
 - Support for PLINK format data
 - Built-in visualization functions
