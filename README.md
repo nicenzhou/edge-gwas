@@ -596,65 +596,6 @@ lambda_gc = custom_qq_plot(gwas_df)
 print(f"λ = {lambda_gc:.3f}")
 ```
 
-## Complete Analysis Example
-
-```python
-"""Complete EDGE GWAS workflow with visualizations"""
-
-from edge_gwas import (
-    EDGEAnalysis,
-    load_plink_data,
-    prepare_phenotype_data,
-    manhattan_plot,
-    qq_plot,
-    plot_alpha_distribution
-)
-import pandas as pd
-
-# 1. Load data
-genotype_data, variant_info = load_plink_data('data/genotypes')
-phenotype_df = pd.read_csv('data/phenotypes.csv', index_col=0)
-
-# 2. Prepare phenotype
-phenotype_df = prepare_phenotype_data(
-    phenotype_df,
-    outcome='disease',
-    covariates=['age', 'sex'] + [f'PC{i}' for i in range(1, 11)],
-    remove_outliers=True
-)
-
-# 3. Initialize EDGE
-edge = EDGEAnalysis(outcome_type='binary', verbose=True)
-
-# 4. Split data
-train_idx = phenotype_df.sample(frac=0.5, random_state=42).index
-test_idx = phenotype_df.index.difference(train_idx)
-
-# 5. Run analysis
-alpha_df, gwas_df = edge.run_full_analysis(
-    train_genotype=genotype_data.loc[train_idx],
-    train_phenotype=phenotype_df.loc[train_idx],
-    test_genotype=genotype_data.loc[test_idx],
-    test_phenotype=phenotype_df.loc[test_idx],
-    outcome='disease',
-    covariates=['age', 'sex'] + [f'PC{i}' for i in range(1, 11)],
-    output_prefix='results/edge_analysis'
-)
-
-# 6. Create visualizations
-manhattan_plot(gwas_df, output='results/manhattan.png')
-lambda_gc = qq_plot(gwas_df, output='results/qq_plot.png')
-plot_alpha_distribution(alpha_df, output='results/alpha_dist.png')
-
-# 7. Summary
-print(f"\n=== Analysis Summary ===")
-print(f"Total variants tested: {len(gwas_df)}")
-print(f"Significant hits (p<5e-8): {(gwas_df['pval'] < 5e-8).sum()}")
-print(f"Genomic inflation (λ): {lambda_gc:.3f}")
-print(f"Mean alpha: {alpha_df['alpha_value'].mean():.3f}")
-print(f"Median alpha: {alpha_df['alpha_value'].median():.3f}")
-```
-
 ## Version History 
 
 ### Version 0.1.0 (Current - Under Public Testing)
