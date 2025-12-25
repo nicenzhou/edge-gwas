@@ -6,7 +6,7 @@
 
 ## Overview
 
-EDGE-GWAS (Encoding Deviation Genotypic Effects GWAS) identifies nonadditive SNP effects using flexible genetic encoding, rather than assuming additive inheritance.
+EDGE-GWAS (Elastic Data-Driven Encoding GWAS) identifies nonadditive SNP effects using flexible genetic encoding, rather than assuming additive inheritance.
 
 **Key Features:**
 - Two-stage analysis: calculate alpha on training data, apply to test data
