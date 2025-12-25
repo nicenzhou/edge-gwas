@@ -3,131 +3,154 @@
 Quick Start Guide
 =================
 
-This guide will help you get started with edge-gwas in minutes.
+This guide demonstrates a complete EDGE GWAS analysis in minutes.
 
-Basic Workflow
---------------
+Minimal Example
+---------------
 
-1. Load your genomic data
-2. Perform quality control
-3. Run GWAS analysis
-4. Visualize results
-
-Simple Example
---------------
-
-Here's a minimal example to get you started:
+Fast minimal EDGE GWAS analysis:
 
 .. code-block:: python
 
-   import edge_gwas
+   from edge_gwas import EDGEAnalysis
+   from edge_gwas.utils import load_plink_data, prepare_phenotype_data, stratified_train_test_split
+   from edge_gwas.visualize import manhattan_plot, qq_plot
+   
+   # Load data
+   geno, info = load_plink_data('data.bed', 'data.bim', 'data.fam')
+   pheno = prepare_phenotype_data('pheno.txt', 'disease', ['age', 'sex', 'PC1', 'PC2'])
+   
+   # Split data
+   train_g, test_g, train_p, test_p = stratified_train_test_split(
+       geno, pheno, 'disease'
+   )
+   
+   # Run analysis
+   edge = EDGEAnalysis(outcome_type='binary')
+   alpha_df, gwas_df = edge.run_full_analysis(
+       train_g, train_p, test_g, test_p,
+       'disease', ['age', 'sex', 'PC1', 'PC2']
+   )
+   
+   # Visualize
+   manhattan_plot(gwas_df, 'manhattan.png')
+   qq_plot(gwas_df, 'qq.png')
+
+Step-by-Step Workflow
+----------------------
+
+1. Import and Initialize
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
    import pandas as pd
+   from edge_gwas import EDGEAnalysis
+   from edge_gwas.utils import (
+       load_plink_data,
+       prepare_phenotype_data,
+       stratified_train_test_split
+   )
+   from edge_gwas.visualize import manhattan_plot, qq_plot
    
-   # Load your data
-   # (Implementation coming in v0.1.1)
-   
-   print(f"edge-gwas version: {edge_gwas.__version__}")
+   # Initialize EDGE Analysis
+   edge = EDGEAnalysis(
+       outcome_type='binary',    # 'binary' or 'continuous'
+       n_jobs=8,                 # Number of CPU cores
+       verbose=True              # Print progress
+   )
 
-Working with Genomic Data
--------------------------
-
-Load Genotype Data
-~~~~~~~~~~~~~~~~~~
+2. Load Data
+~~~~~~~~~~~~
 
 .. code-block:: python
 
-   from edge_gwas import data_loader
-   
    # Load genotype data
-   # genotypes = data_loader.load_genotypes('path/to/data.vcf')
-   
-   # Coming in v0.1.1
-
-Load Phenotype Data
-~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   from edge_gwas import data_loader
+   genotype_data, variant_info = load_plink_data(
+       bed_file='path/to/data.bed',
+       bim_file='path/to/data.bim',
+       fam_file='path/to/data.fam'
+   )
    
    # Load phenotype data
-   # phenotypes = data_loader.load_phenotypes('path/to/phenotypes.csv')
-   
-   # Coming in v0.1.1
+   phenotype_df = prepare_phenotype_data(
+       phenotype_file='path/to/phenotypes.txt',
+       outcome_col='disease',
+       covariate_cols=['age', 'sex', 'PC1', 'PC2', 'PC3', 'PC4', 'PC5'],
+       sample_id_col='IID'
+   )
 
-Running Your First GWAS
------------------------
-
-Basic GWAS Analysis
-~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: python
-
-   from edge_gwas import gwas
-   
-   # Run GWAS analysis
-   # results = gwas.run_association(
-   #     genotypes=genotypes,
-   #     phenotypes=phenotypes,
-   #     covariates=covariates
-   # )
-   
-   # Implementation coming in v0.1.1
-
-Quality Control
-~~~~~~~~~~~~~~~
+3. Split Data
+~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   from edge_gwas import qc
-   
-   # Perform quality control
-   # filtered_data = qc.filter_variants(
-   #     genotypes,
-   #     maf_threshold=0.01,
-   #     geno_threshold=0.05
-   # )
-   
-   # Coming in v0.1.1
+   train_geno, test_geno, train_pheno, test_pheno = stratified_train_test_split(
+       genotype_df=genotype_data,
+       phenotype_df=phenotype_df,
+       outcome_col='disease',
+       test_size=0.5,
+       random_state=42
+   )
 
-Visualization
--------------
-
-Manhattan Plot
-~~~~~~~~~~~~~~
+4. Run EDGE Analysis
+~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   from edge_gwas import viz
+   # One-step complete analysis
+   alpha_df, gwas_df = edge.run_full_analysis(
+       train_genotype=train_geno,
+       train_phenotype=train_pheno,
+       test_genotype=test_geno,
+       test_phenotype=test_pheno,
+       outcome='disease',
+       covariates=['age', 'sex', 'PC1', 'PC2', 'PC3', 'PC4', 'PC5'],
+       output_prefix='edge_results'
+   )
    
-   # Create Manhattan plot
-   # viz.manhattan_plot(results, output='manhattan.png')
-   
-   # Coming in v0.1.1
+   print(f"Tested {len(gwas_df)} variants")
+   print(f"Significant (p < 5e-8): {(gwas_df['pval'] < 5e-8).sum()}")
 
-QQ Plot
-~~~~~~~
+5. Visualize Results
+~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-   from edge_gwas import viz
+   # Manhattan plot
+   manhattan_plot(gwas_df, 'manhattan.png', title='EDGE GWAS')
    
-   # Create QQ plot
-   # viz.qq_plot(results, output='qq.png')
-   
-   # Coming in v0.1.1
+   # QQ plot
+   lambda_gc = qq_plot(gwas_df, 'qq_plot.png')
+   print(f"Genomic inflation factor (λ): {lambda_gc:.3f}")
+
+Understanding the Output
+------------------------
+
+Alpha Values DataFrame
+~~~~~~~~~~~~~~~~~~~~~~
+
+* ``variant_id``: SNP identifier
+* ``alpha_value``: Encoding parameter (β_het/β_hom)
+* ``eaf``: Effect allele frequency
+* ``coef_het``: Heterozygous coefficient
+* ``coef_hom``: Homozygous coefficient
+
+GWAS Results DataFrame
+~~~~~~~~~~~~~~~~~~~~~~
+
+* ``variant_id``: SNP identifier
+* ``chr``: Chromosome
+* ``pos``: Position
+* ``pval``: P-value
+* ``coef``: Effect coefficient
+* ``std_err``: Standard error
+* ``alpha_value``: Applied encoding parameter
 
 Next Steps
 ----------
 
 * Read the :ref:`user_guide` for detailed information
-* Check out :ref:`examples` for complete workflows
-* Explore the :ref:`api` documentation
-
-Note
-----
-
-**Version 0.1.0 is a documentation-only release.**
-Full implementation will be available in v0.1.1.
-
-This quickstart guide shows the planned API and functionality.
+* Check :ref:`examples` for complete workflows
+* Explore :ref:`api_reference` for all functions
+* Learn about the :ref:`statistical_model`
