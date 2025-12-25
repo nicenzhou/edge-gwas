@@ -25,7 +25,7 @@ Getting Started
 1. Fork the Repository
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Visit https://github.com/nicenzhou/Visit https://github.com/ni
+Visit https://github.com/nicenzhou/edge-gwas and click "Fork
 
 2. Clone Your Fork
 ~~~~~~~~~~~~~~~~~~
