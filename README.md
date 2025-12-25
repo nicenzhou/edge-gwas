@@ -20,11 +20,15 @@ EDGE-GWAS (Elastic Data-Driven Encoding GWAS) identifies nonadditive SNP effects
 ```bash
 # Install edge-gwas with all dependencies
 pip install git+https://github.com/nicenzhou/edge-gwas.git
+```
 
+```python
 # Verify installation in Python/Jupyter Notebook
 from edge_gwas import EDGEAnalysis, manhattan_plot, qq_plot
+```
 
-# Verify installation (use python3 on Mac/Linux)
+```python
+# Verify installation use python3 on Mac/Linux
 python3 -c "from edge_gwas import EDGEAnalysis, manhattan_plot, qq_plot; print('✓ Installed successfully')"
 ```
 
