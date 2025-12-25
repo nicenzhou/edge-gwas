@@ -19,28 +19,21 @@ edge-gwas requires the following packages:
 * pandas >= 1.2.0
 * scipy >= 1.6.0
 * statsmodels >= 0.12.0
+* scikit-learn >= 0.24.0
+* matplotlib >= 3.3.0
+* pandas-plink >= 2.0.0
 
-Installation Methods
---------------------
+Installation from GitHub
+------------------------
 
-Install from GitHub (Recommended for v0.1.0)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+**Recommended method for v0.1.0:**
 
 .. code-block:: bash
 
    pip install git+https://github.com/YOUR-USERNAME/edge-gwas.git
 
-Install from PyPI (Coming Soon)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: bash
-
-   pip install edge-gwas
-
-Development Installation
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-For contributors and developers:
+Installation on Mac/Linux
+-------------------------
 
 .. code-block:: bash
 
@@ -48,21 +41,22 @@ For contributors and developers:
    git clone https://github.com/YOUR-USERNAME/edge-gwas.git
    cd edge-gwas
    
-   # Install in editable mode with development dependencies
-   pip install -e ".[dev]"
+   # Install dependencies
+   pip install -r requirements.txt
+   
+   # Install the package in development mode
+   pip install -e .
 
 Virtual Environment Setup
 -------------------------
-
-We recommend using a virtual environment:
 
 **Using venv:**
 
 .. code-block:: bash
 
-   python -m venv edge-gwas-env
+   python3 -m venv edge-gwas-env
    source edge-gwas-env/bin/activate  # On Windows: edge-gwas-env\Scripts\activate
-   pip install edge-gwas
+   pip install git+https://github.com/YOUR-USERNAME/edge-gwas.git
 
 **Using conda:**
 
@@ -70,74 +64,67 @@ We recommend using a virtual environment:
 
    conda create -n edge-gwas python=3.9
    conda activate edge-gwas
-   pip install edge-gwas
+   pip install git+https://github.com/YOUR-USERNAME/edge-gwas.git
 
 Verify Installation
 -------------------
 
-To verify your installation:
+**In Python/Jupyter Notebook:**
 
 .. code-block:: python
 
-   import edge_gwas
-   print(edge_gwas.__version__)
-   # Should print: 0.1.0
+   from edge_gwas import EDGEAnalysis, manhattan_plot, qq_plot
+   print("✓ edge-gwas installed successfully")
 
-Run a simple test:
+**Using command line (Mac/Linux):**
 
-.. code-block:: python
+.. code-block:: bash
 
-   from edge_gwas import gwas
-   # Test basic functionality
-   print("edge-gwas is ready!")
+   python3 -c "from edge_gwas import EDGEAnalysis, manhattan_plot, qq_plot; print('✓ Installed successfully')"
 
 Troubleshooting
 ---------------
 
-Common Issues
-~~~~~~~~~~~~~
-
 **ImportError: No module named 'edge_gwas'**
 
-Make sure you've activated your virtual environment and installed the package.
+Ensure virtual environment is activated and package is installed.
 
 **Dependency conflicts**
 
-Try creating a fresh virtual environment:
+Create a fresh environment:
 
 .. code-block:: bash
 
-   python -m venv fresh-env
-   source fresh-env/bin/activate
-   pip install edge-gwas
+   conda create -n edge-gwas-fresh python=3.9
+   conda activate edge-gwas-fresh
+   pip install git+https://github.com/YOUR-USERNAME/edge-gwas.git
 
 **Permission errors**
 
-Use the ``--user`` flag:
+Use ``--user`` flag:
 
 .. code-block:: bash
 
-   pip install --user edge-gwas
+   pip install --user git+https://github.com/YOUR-USERNAME/edge-gwas.git
 
 Platform-Specific Notes
 -----------------------
 
 **Windows:**
 - Use Command Prompt or PowerShell
-- Some scientific packages may require Visual C++ Build Tools
+- May require Visual C++ Build Tools for scientific packages
 
 **macOS:**
-- May need to install Xcode Command Line Tools: ``xcode-select --install``
+- May need Xcode Command Line Tools: ``xcode-select --install``
 
 **Linux:**
-- Usually works out of the box
-- On Ubuntu/Debian: ``sudo apt-get install python3-dev``
+- Ubuntu/Debian: ``sudo apt-get install python3-dev``
 
 Next Steps
 ----------
 
-After installation, check out:
+After installation:
 
 * :ref:`quickstart` - Quick start guide
 * :ref:`examples` - Example workflows
-* :ref:`api` - API reference
+* :ref:`api_reference` - API documentation
