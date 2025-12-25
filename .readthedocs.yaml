@@ -3,6 +3,12 @@
 
 version: 2
 
+# Set the OS, Python version and other tools you might need
+build:
+  os: ubuntu-22.04
+  tools:
+    python: "3.9"
+
 # Build documentation with Sphinx
 sphinx:
   configuration: docs/conf.py
@@ -13,10 +19,7 @@ formats:
   - pdf
   - epub
 
-# Python environment
+# Python dependencies
 python:
-  version: "3.9"
   install:
     - requirements: docs/requirements.txt
-    - method: pip
-      path: .
