@@ -241,40 +241,6 @@ Bug Fixes
 * Fix edge cases in data loading
 * Improve error messages
 
-Version 0.2.0 (Planned)
-~~~~~~~~~~~~~~~~~~~~~~~
-
-New Features
-^^^^^^^^^^^^
-
-* PyPI package distribution
-* Support for additional file formats (HDF5, VCF)
-* Gene-based analysis functionality
-* Pathway enrichment tools
-* Web-based visualization dashboard
-* Automated report generation
-
-Enhancements
-^^^^^^^^^^^^
-
-* GPU acceleration for large datasets
-* Improved memory management
-* Additional statistical tests
-* Cross-validation utilities
-
-Version 1.0.0 (Future)
-~~~~~~~~~~~~~~~~~~~~~~
-
-Major Release
-^^^^^^^^^^^^^
-
-* Stable API (semantic versioning)
-* Complete test coverage
-* Comprehensive benchmarking
-* Publication-ready analysis pipeline
-* Integration with common GWAS tools
-* Cloud computing support
-
 ---
 
 Version History Summary
@@ -284,69 +250,18 @@ Version History Summary
    :header-rows: 1
    :widths: 15 15 20 50
 
-   * - Version
-     - Date
-     - Status
-     - Key Features
+   * - 0.1.1
+     - 2025-12-25
+     - Pending
+     - Add more functions
    * - 0.1.0
-     - 2025-01-20
+     - 2025-12-24
      - Public Testing
      - First packaged release, full API, documentation
    * - 0.0.0
-     - 2024-04-XX
+     - 2024-04-02
      - Deprecated
      - Original standalone scripts (no longer maintained)
-
----
-
-Contributing to Changelog
---------------------------
-
-When contributing to edge-gwas, please update this changelog following these guidelines:
-
-Format
-~~~~~~
-
-.. code-block:: rst
-
-   Version X.Y.Z (YYYY-MM-DD)
-   --------------------------
-   
-   Category
-   ~~~~~~~~
-   
-   * Brief description of change
-   * Reference to issue/PR if applicable
-
-Categories
-~~~~~~~~~~
-
-* **Added** - New features
-* **Changed** - Changes in existing functionality
-* **Deprecated** - Soon-to-be removed features
-* **Removed** - Removed features
-* **Fixed** - Bug fixes
-* **Security** - Security fixes
-
-Example Entry
-~~~~~~~~~~~~~
-
-.. code-block:: rst
-
-   Version 0.1.1 (2025-02-15)
-   --------------------------
-   
-   Fixed
-   ~~~~~
-   
-   * Fixed convergence issue with rare variants (#123)
-   * Corrected lambda calculation in qq_plot() (#125)
-   
-   Added
-   ~~~~~
-   
-   * New function for gene-based analysis (#130)
-   * Support for VCF file format (#132)
 
 ---
 
