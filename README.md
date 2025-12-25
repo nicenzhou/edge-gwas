@@ -1,6 +1,6 @@
 # EDGE GWAS Python Package Implementation Guide
 
-## Version 0.1.0 (Under Testing)
+## Current Version 0.1.0 (Under Testing)
 
 ⚠️ **Note:** This package is currently under active development and public testing.
 
