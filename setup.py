@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="edge-gwas",
-    version="0.0.0",
+    version="0.1.0",
     author="Jiayan Zhou",
     author_email="jyzhou@stanford.edu",
     description="EDGE (Encoding Deviation Genotypic Effects) GWAS: Flexibly encoded GWAS for identifying nonadditive SNPs",
