@@ -9,6 +9,28 @@ EDGE (Encoding-based Differential Genetic Effects) is a GWAS method that identif
 - Handles binary and quantitative outcomes
 - Publication-ready visualizations
 
+## Package Structure
+
+<pre>
+edge-gwas/
+├── edge_gwas/
+│   ├── __init__.py
+│   ├── core.py
+│   ├── utils.py
+│   └── io_handlers.py
+├── tests/
+│   ├── __init__.py
+│   └── test_core.py
+├── examples/
+│   ├── example_binary_outcome.py
+│   └── example_continuous_outcome.py
+├── setup.py
+├── requirements.txt
+├── README.md
+├── LICENSE
+└── .gitignore
+</pre>
+
 ## Statistical Model
 
 **Regression Model:**
