@@ -2,12 +2,11 @@
 
 ## Overview
 
-EDGE (Encoding-based Differential Genetic Effects) is a GWAS method that identifies optimal genetic encoding models for each variant, testing 7 inheritance patterns instead of assuming additive effects.
+EDGE (Encoding-based Differential Genetic Effects) is a GWAS method that identifies optimal genetic encoding models for each variant, testing all possible inheritance patterns instead of assuming additive effects.
 
 **Key Features:**
 - Flexible genetic encoding (recessive, additive, dominant, etc.)
-- Handles binary, quantitative, and survival outcomes
-- UK Biobank RAP integration
+- Handles binary and quantitative outcomes
 - Publication-ready visualizations
 
 ## Statistical Model
