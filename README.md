@@ -24,7 +24,7 @@ $$\alpha = \frac{\beta_{Het}}{\beta_{HA}}$$
 ### Option 1: Install from GitHub (Recommended)
 
 ```bash
-pip install git+https://github.com/G2lab/UKBB_GWAS_pipeline.git
+pip install git+https://github.com/nicenzhou/edge-gwas.git
 ```
 
 ### Option 2: Manual Installation
