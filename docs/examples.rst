@@ -242,7 +242,7 @@ Apply previously calculated alpha values to new test data.
 Example 5: Custom Quality Control Pipeline
 -------------------------------------------
 
-Detailed QC with multiple filters.
+Detailed QC with multiple filters including new HWE and sample filtering.
 
 .. code-block:: python
 
@@ -252,6 +252,9 @@ Detailed QC with multiple filters.
        prepare_phenotype_data,
        filter_variants_by_maf,
        filter_variants_by_missing,
+       filter_variants_by_hwe,
+       filter_samples_by_call_rate,
+       check_case_control_balance,
        stratified_train_test_split
    )
    
@@ -276,18 +279,22 @@ Detailed QC with multiple filters.
    )
    print(f"After missingness filter: {genotype_df.shape[1]} variants")
    
-   # QC Step 3: Filter samples by call rate
-   sample_call_rate = genotype_df.notna().mean(axis=1)
-   good_samples = sample_call_rate[sample_call_rate > 0.95].index
-   genotype_df = genotype_df.loc[good_samples]
-   phenotype_df = phenotype_df.loc[good_samples]
+   # QC Step 3: Filter by Hardy-Weinberg Equilibrium (NEW)
+   genotype_df = filter_variants_by_hwe(
+       genotype_df, hwe_threshold=1e-6, verbose=True
+   )
+   print(f"After HWE filter: {genotype_df.shape[1]} variants")
+   
+   # QC Step 4: Filter samples by call rate (NEW)
+   genotype_df, phenotype_df = filter_samples_by_call_rate(
+       genotype_df, phenotype_df, min_call_rate=0.95, verbose=True
+   )
    print(f"After sample QC: {genotype_df.shape[0]} samples")
    
-   # QC Step 4: Check case/control balance
-   case_count = phenotype_df['disease'].sum()
-   control_count = len(phenotype_df) - case_count
-   print(f"Cases: {case_count}, Controls: {control_count}")
-   print(f"Case/control ratio: {case_count/control_count:.2f}")
+   # QC Step 5: Check case/control balance (NEW)
+   balance = check_case_control_balance(
+       phenotype_df, outcome_col='disease', verbose=True
+   )
    
    # Continue with analysis
    train_g, test_g, train_p, test_p = stratified_train_test_split(
@@ -510,66 +517,36 @@ Memory-efficient analysis of large genomic datasets.
 Example 9: Comparing EDGE with Standard Additive GWAS
 ------------------------------------------------------
 
-Compare EDGE results with traditional additive GWAS.
+Compare EDGE results with traditional additive GWAS using built-in function.
 
 .. code-block:: python
 
    import pandas as pd
    import numpy as np
    from edge_gwas import EDGEAnalysis
-   from scipy import stats
+   from edge_gwas.utils import additive_gwas
    import matplotlib.pyplot as plt
    
    # Run EDGE analysis
    edge = EDGEAnalysis(outcome_type='binary', n_jobs=8)
-   alpha_df, edge_gwas = edge.run_full_analysis(
+   alpha_df, edge_gwas_results = edge.run_full_analysis(
        train_g, train_p, test_g, test_p,
        outcome='disease',
        covariates=['age', 'sex', 'PC1', 'PC2']
    )
    
-   # Run standard additive GWAS for comparison
-   def additive_gwas(genotype_df, phenotype_df, outcome, covariates):
-       """Simple additive GWAS for comparison"""
-       from sklearn.linear_model import LogisticRegression
-       
-       results = []
-       for variant in genotype_df.columns:
-           # Prepare data
-           X = phenotype_df[covariates].copy()
-           X['genotype'] = genotype_df[variant]
-           X = X.dropna()
-           
-           y = phenotype_df.loc[X.index, outcome]
-           
-           # Fit model
-           model = LogisticRegression(max_iter=1000)
-           model.fit(X, y)
-           
-           # Get coefficient and p-value
-           coef = model.coef_[0][-1]  # Last coefficient is genotype
-           
-           # Calculate p-value using Wald test (simplified)
-           # Note: This is a simplified version
-           z_score = coef / (np.std(X['genotype']) + 1e-10)
-           pval = 2 * (1 - stats.norm.cdf(abs(z_score)))
-           
-           results.append({
-               'variant_id': variant,
-               'coef': coef,
-               'pval': pval
-           })
-       
-       return pd.DataFrame(results)
-   
-   # Run additive GWAS
-   additive_gwas_results = additive_gwas(
-       test_g, test_p, 'disease', ['age', 'sex', 'PC1', 'PC2']
+   # Run standard additive GWAS using built-in function (NEW)
+   additive_results = additive_gwas(
+       genotype_df=test_g,
+       phenotype_df=test_p,
+       outcome='disease',
+       covariates=['age', 'sex', 'PC1', 'PC2'],
+       outcome_type='binary'
    )
    
    # Merge results for comparison
-   comparison = edge_gwas[['variant_id', 'pval', 'coef']].merge(
-       additive_gwas_results,
+   comparison = edge_gwas_results[['variant_id', 'pval', 'coef']].merge(
+       additive_results[['variant_id', 'pval', 'coef']],
        on='variant_id',
        suffixes=('_edge', '_additive')
    )
@@ -580,7 +557,9 @@ Compare EDGE results with traditional additive GWAS.
    comparison['edge_advantage'] = comparison['-log10p_edge'] - comparison['-log10p_additive']
    
    # Variants where EDGE is more significant
-   edge_better = comparison[comparison['edge_advantage'] > 2].sort_values('edge_advantage', ascending=False)
+   edge_better = comparison[comparison['edge_advantage'] > 2].sort_values(
+       'edge_advantage', ascending=False
+   )
    
    print(f"\nVariants where EDGE shows advantage (>100-fold p-value improvement):")
    print(edge_better[['variant_id', 'pval_edge', 'pval_additive', 'edge_advantage']].head(10))
@@ -612,98 +591,27 @@ Compare EDGE results with traditional additive GWAS.
    plt.tight_layout()
    plt.savefig('edge_vs_additive_comparison.png', dpi=300)
    plt.close()
-   
-   print(f"\nComparison plot saved: edge_vs_additive_comparison.png")
 
 Example 10: Cross-Validation Strategy
 --------------------------------------
 
-Implement k-fold cross-validation for robust alpha estimation.
+Implement k-fold cross-validation using built-in function.
 
 .. code-block:: python
 
    import pandas as pd
-   import numpy as np
-   from edge_gwas import EDGEAnalysis
-   from sklearn.model_selection import KFold
+   from edge_gwas.utils import cross_validated_edge_analysis
    
-   def cross_validated_edge_analysis(genotype_df, phenotype_df, outcome, covariates, n_folds=5):
-       """
-       Perform k-fold cross-validation for EDGE analysis.
-       Returns averaged alpha values and combined GWAS results.
-       """
-       kf = KFold(n_splits=n_folds, shuffle=True, random_state=42)
-       edge = EDGEAnalysis(outcome_type='binary', n_jobs=8)
-       
-       all_alpha_values = []
-       all_gwas_results = []
-       
-       for fold, (train_idx, test_idx) in enumerate(kf.split(genotype_df), 1):
-           print(f"\nProcessing fold {fold}/{n_folds}...")
-           
-           # Split data
-           train_samples = genotype_df.index[train_idx]
-           test_samples = genotype_df.index[test_idx]
-           
-           train_g = genotype_df.loc[train_samples]
-           test_g = genotype_df.loc[test_samples]
-           train_p = phenotype_df.loc[train_samples]
-           test_p = phenotype_df.loc[test_samples]
-           
-           # Run EDGE
-           alpha_df, gwas_df = edge.run_full_analysis(
-               train_g, train_p, test_g, test_p,
-               outcome=outcome,
-               covariates=covariates
-           )
-           
-           # Store results
-           alpha_df['fold'] = fold
-           gwas_df['fold'] = fold
-           all_alpha_values.append(alpha_df)
-           all_gwas_results.append(gwas_df)
-       
-       # Combine results
-       combined_alpha = pd.concat(all_alpha_values, ignore_index=True)
-       combined_gwas = pd.concat(all_gwas_results, ignore_index=True)
-       
-       # Average alpha values across folds
-       avg_alpha = combined_alpha.groupby('variant_id').agg({
-           'alpha_value': ['mean', 'std'],
-           'eaf': 'mean'
-       }).reset_index()
-       avg_alpha.columns = ['variant_id', 'alpha_mean', 'alpha_std', 'eaf']
-       
-       # Meta-analysis of p-values across folds (Fisher's method)
-       from scipy.stats import combine_pvalues
-       
-       meta_gwas = []
-       for variant in combined_gwas['variant_id'].unique():
-           variant_data = combined_gwas[combined_gwas['variant_id'] == variant]
-           
-           # Combine p-values using Fisher's method
-           _, combined_pval = combine_pvalues(variant_data['pval'], method='fisher')
-           
-           meta_gwas.append({
-               'variant_id': variant,
-               'chr': variant_data['chr'].iloc[0],
-               'pos': variant_data['pos'].iloc[0],
-               'pval': combined_pval,
-               'mean_coef': variant_data['coef'].mean(),
-               'std_coef': variant_data['coef'].std()
-           })
-       
-       meta_gwas_df = pd.DataFrame(meta_gwas)
-       
-       return avg_alpha, meta_gwas_df, combined_alpha, combined_gwas
-   
-   # Run cross-validated analysis
+   # Run cross-validated analysis using built-in function (NEW)
    avg_alpha, meta_gwas, all_alpha, all_gwas = cross_validated_edge_analysis(
        genotype_df=genotype_data,
        phenotype_df=phenotype_df,
        outcome='disease',
        covariates=['age', 'sex'] + [f'PC{i}' for i in range(1, 11)],
-       n_folds=5
+       outcome_type='binary',  # NEW: Support for continuous outcomes
+       n_folds=5,
+       n_jobs=8,
+       random_state=42
    )
    
    # Check alpha stability across folds
