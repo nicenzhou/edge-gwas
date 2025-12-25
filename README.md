@@ -6,17 +6,6 @@
 
 ⚠️ **Current Version 0.1.0 - Under Public Testing**
 
-## Documentation
-
-**Complete documentation available at:** https://edge-gwas.readthedocs.io/
-
-- [Installation Guide](https://edge-gwas.readthedocs.io/en/latest/installation.html)
-- [Quick Start Tutorial](https://edge-gwas.readthedocs.io/en/latest/quickstart.html)
-- [User Guide](https://edge-gwas.readthedocs.io/en/latest/user_guide.html)
-- [API Reference](https://edge-gwas.readthedocs.io/en/latest/api_reference.html)
-- [Example Workflows](https://edge-gwas.readthedocs.io/en/latest/examples.html)
-- [Statistical Model](https://edge-gwas.readthedocs.io/en/latest/statistical_model.html)
-
 ## Overview
 
 EDGE GWAS (Elastic Data-Driven Encoding GWAS) identifies nonadditive genetic effects (recessive, dominant, over-dominant) using a **two-stage data-driven approach** rather than assuming additive inheritance.  
@@ -86,6 +75,17 @@ Where:
 
 **Learn more:** https://edge-gwas.readthedocs.io/en/latest/statistical_model.html
 
+## Documentation
+
+**Complete documentation available at:** https://edge-gwas.readthedocs.io/
+
+- [Installation Guide](https://edge-gwas.readthedocs.io/en/latest/installation.html)
+- [Quick Start Tutorial](https://edge-gwas.readthedocs.io/en/latest/quickstart.html)
+- [User Guide](https://edge-gwas.readthedocs.io/en/latest/user_guide.html)
+- [API Reference](https://edge-gwas.readthedocs.io/en/latest/api_reference.html)
+- [Example Workflows](https://edge-gwas.readthedocs.io/en/latest/examples.html)
+- [Statistical Model](https://edge-gwas.readthedocs.io/en/latest/statistical_model.html)
+  
 ## Version History
 
 ### v0.1.0 (Current - Public Testing)
