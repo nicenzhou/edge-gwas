@@ -53,6 +53,7 @@ pip install pandas numpy scipy statsmodels matplotlib seaborn
 
 ```bash
 # Additional dependencies for UK Biobank
+# Usually no need
 pip install dxpy dxdata
 ```
 
