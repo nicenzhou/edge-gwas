@@ -8,7 +8,7 @@ All notable changes to edge-gwas will be documented in this file.
 The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`_,
 and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0.html>`_.
 
-Version 0.1.0 (2025-01-20) - Current Release
+Version 0.1.0 (2025-12-24) - Current Release
 --------------------------------------------
 
 **Status:** ⚠️ Public Testing Phase
@@ -151,7 +151,7 @@ Notes
 
 ---
 
-Version 0.0.0 (2024-04-XX) - Legacy
+Version 0.0.0 (2024-04-02) - Legacy
 ------------------------------------
 
 **Status:** 🔒 Closed - No Further Maintenance
