@@ -630,6 +630,54 @@ Implement k-fold cross-validation using built-in function.
    manhattan_plot(meta_gwas, 'cv_manhattan.png', title='Cross-Validated EDGE GWAS')
    qq_plot(meta_gwas, 'cv_qq.png')
 
+Example 11: Loading Different Genotype File Formats
+----------------------------------------------------
+
+Load data from PGEN, BGEN, or VCF formats.
+
+.. code-block:: python
+
+   from edge_gwas.utils import (
+       load_plink_data,
+       load_pgen_data,
+       load_bgen_data,
+       load_vcf_data
+   )
+   
+   # Option 1: Load PLINK format (.bed/.bim/.fam)
+   genotype_df, variant_info = load_plink_data(
+       bed_file='data.bed',
+       bim_file='data.bim',
+       fam_file='data.fam'
+   )
+   
+   # Option 2: Load PLINK 2 format (.pgen/.pvar/.psam)
+   genotype_df, variant_info = load_pgen_data(
+       pgen_file='data.pgen',
+       pvar_file='data.pvar',
+       psam_file='data.psam'
+   )
+   
+   # Option 3: Load BGEN format
+   genotype_df, variant_info = load_bgen_data(
+       bgen_file='data.bgen',
+       sample_file='data.sample'  # Optional
+   )
+   
+   # Option 4: Load VCF format
+   genotype_df, variant_info = load_vcf_data(
+       vcf_file='data.vcf.gz',
+       dosage=True  # Use dosages if available, otherwise hard calls
+   )
+   
+   # All formats return the same structure:
+   # - genotype_df: samples x variants DataFrame
+   # - variant_info: variant information DataFrame
+   
+   # Continue with standard EDGE workflow
+   from edge_gwas import EDGEAnalysis
+   # ... rest of analysis
+
 Tips and Best Practices
 ------------------------
 
