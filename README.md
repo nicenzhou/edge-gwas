@@ -1,5 +1,7 @@
 # EDGE GWAS Implementation Guide
 
+## Version 0.0.0 (Under Public Testing)
+
 ## Overview
 
 EDGE (Encoding-based Differential Genetic Effects) is a GWAS method that identifies optimal genetic encoding models for each variant, testing all possible inheritance patterns instead of assuming additive effects.
@@ -97,7 +99,7 @@ edge-gwas/
 ```python
 import pandas as pd
 import numpy as np
-from edge_gwas import EdgeGWAS
+from edge_gwas import EDGEAnalysis
 
 # Load your genotype data
 # Format: rows = samples, columns = SNPs
@@ -142,7 +144,7 @@ print(f"Total samples after QC: {len(pheno_cov_df)}")
 
 ```python
 # Initialize EDGE
-edge = EdgeGWAS(
+edge = EDGEAnalysis(
     phenotype_name='disease_status',  # or 'bmi' for quantitative
     phenotype_type='binary',           # or 'quantitative'
     covariates=covariates,
@@ -378,7 +380,7 @@ Zhou, J., Rico, A. L. G., Guare, L., Million Veteran Program, Chang, K. M., Tsao
 
 **BibTeX:**
 ```bibtex
-@article{zhou2023edgegwas,
+@article{zhou2023EDGEAnalysis,
   title={Flexibly encoded genome-wide association study identifies novel nonadditive genetic risk variants for cardiometabolic traits},
   author={Zhou, Jiayan and Rico, Andre Luis Garao and Guare, Lindsay and Million Veteran Program and Chang, Kyong-Mi and Tsao, Philip S and Assimes, Themistocles L and Verma, Shefali Setia and Hall, Molly Ann},
   journal={medRxiv},
