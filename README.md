@@ -62,7 +62,7 @@ pip install dxpy dxdata
 ```python
 # Test import
 try:
-    from edge_gwas import EdgeGWAS
+    from edge_gwas import EDGEAnalysis
     print("✓ edge-gwas installed successfully")
 except ImportError as e:
     print(f"✗ Installation failed: {e}")
