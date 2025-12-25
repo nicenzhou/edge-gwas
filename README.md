@@ -9,6 +9,22 @@ EDGE (Encoding-based Differential Genetic Effects) is a GWAS method that identif
 - Handles binary and quantitative outcomes
 - Publication-ready visualizations
 
+## Statistical Model
+
+**Regression Model:**
+
+$$E(Y | SNP_{Het}, SNP_{HA}, COV_i) = \beta_0 + \beta_{Het} \cdot SNP_{Het} + \beta_{HA} \cdot SNP_{HA} + \sum_{i} \beta_{cov_i} \cdot COV_i$$
+
+**Encoding Parameter:**
+
+$$\alpha = \frac{\beta_{Het}}{\beta_{HA}}$$
+
+## Installation
+
+```bash
+pip install git+https://github.com/G2lab/UKBB_GWAS_pipeline.git
+```
+
 ## Package Structure
 
 <pre>
@@ -30,22 +46,6 @@ edge-gwas/
 ├── LICENSE
 └── .gitignore
 </pre>
-
-## Statistical Model
-
-**Regression Model:**
-
-$$E(Y | SNP_{Het}, SNP_{HA}, COV_i) = \beta_0 + \beta_{Het} \cdot SNP_{Het} + \beta_{HA} \cdot SNP_{HA} + \sum_{i} \beta_{cov_i} \cdot COV_i$$
-
-**Encoding Parameter:**
-
-$$\alpha = \frac{\beta_{Het}}{\beta_{HA}}$$
-
-## Installation
-
-```bash
-pip install git+https://github.com/G2lab/UKBB_GWAS_pipeline.git
-```
 
 ## Quick Start
 
