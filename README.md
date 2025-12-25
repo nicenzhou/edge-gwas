@@ -45,9 +45,9 @@ from edge_gwas import (
 
 # Initialize
 edge = EDGEAnalysis(
-    outcome_type='binary',    # or 'continuous'
+    outcome_type='binary', # or 'continuous'
     n_jobs = 8, # number of core
-    max_iter=1000,  # maximum iterations for model convergence
+    max_iter=1000, # maximum iterations for model convergence
     verbose=True
 )
 ```
