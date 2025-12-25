@@ -1,12 +1,12 @@
 # EDGE GWAS Python Package Implementation Guide
 
-## Version 0.1.0 (Under Public Testing)
+## Version 0.1.0 (Under Testing)
 
 ⚠️ **Note:** This package is currently under active development and public testing.
 
 > **Previous Version:**
 > The original EDGE implementation (v0.0.0, plain Python scripts) is available at [https://github.com/nicenzhou/EDGE](https://github.com/nicenzhou/EDGE).
-> This version is **no longer maintained**; users are encouraged to migrate to v0.1.0.
+> The version 0.0.0 is **no longer maintained**; users are encouraged to migrate to v0.1.0.
 
 ## Overview
 
