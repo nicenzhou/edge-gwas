@@ -204,7 +204,49 @@ qq_plot(files)
 4. **Significance:** Genome-wide threshold p < 5×10⁻⁸
 5. **λ Interpretation:** λ = 1.0-1.05 acceptable; >1.1 suggests stratification
 
-## References
+## Applications
 
-For methodology details, see the EDGE publication and documentation at:
-https://github.com/G2lab/UKBB_GWAS_pipeline
+EDGE has been successfully applied in large-scale genomic studies:
+
+- **UK Biobank (UKB)**: Genome-wide analyses across diverse phenotypes
+- **Million Veteran Program (MVP)**: Large-scale veteran health genomics research
+
+### Implementation Code
+
+For the complete EDGE methodology and detailed implementation, see:
+
+**Original EDGE Method:**
+- Repository: [https://github.com/nicenzhou/EDGE](https://github.com/nicenzhou/EDGE)
+- Publication: [EDGE GWAS_Preprint](https://doi.org/10.1101/2023.06.01.23290857)
+
+## Citation
+
+If you use EDGE in your research, please cite: 
+Zhou, J., Rico, A. L. G., Guare, L., Million Veteran Program, Chang, K. M., Tsao, P. S., Assimes, T. L., Verma, S. S., & Hall, M. A. (2023). Flexibly encoded genome-wide association study identifies novel nonadditive genetic risk variants for cardiometabolic traits. *medRxiv*, 2023.06.01.23290857. https://doi.org/10.1101/2023.06.01.23290857
+
+**BibTeX:**
+```bibtex
+@article{zhou2023edgegwas,
+  title={Flexibly encoded genome-wide association study identifies novel nonadditive genetic risk variants for cardiometabolic traits},
+  author={Zhou, Jiayan and Rico, Andre Luis Garao and Guare, Lindsay and Million Veteran Program and Chang, Kyong-Mi and Tsao, Philip S and Assimes, Themistocles L and Verma, Shefali Setia and Hall, Molly Ann},
+  journal={medRxiv},
+  pages={2023--06},
+  year={2023},
+  publisher={Cold Spring Harbor Laboratory Press},
+  doi={10.1101/2023.06.01.23290857}
+}
+```
+
+## Contact
+
+**Corresponding Author:**  
+Molly Ann Hall - molly.hall@pennmedicine.upenn.edu
+
+**For questions about the code:**  
+Jiayan Zhou - jyzhou@stanford.edu
+
+## License
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+[![GPL Logo](https://www.gnu.org/graphics/gplv3-88x31.png)](https://www.gnu.org/licenses/gpl-3.0)
+
