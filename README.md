@@ -29,23 +29,43 @@ pip install git+https://github.com/nicenzhou/edge-gwas.git
 
 ### Option 2: Manual Installation
 
-If the packaged version is not available, you can use the standalone EDGE implementation:
+If you prefer to clone the repository:
 
 ```bash
 # Clone the repository
-git clone https://github.com/nicenzhou/EDGE.git
-cd EDGE
+git clone https://github.com/nicenzhou/edge-gwas.git
+cd edge-gwas
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Install the package
+pip install -e .
 ```
 
 ### Required Dependencies
 
 ```bash
-pip install pandas numpy scipy statsmodels matplotlib seaborn dxpy dxdata
+pip install pandas numpy scipy statsmodels matplotlib seaborn
 ```
 
+### For UK Biobank RAP Users
+
+```bash
+# Additional dependencies for UK Biobank
+pip install dxpy dxdata
+```
+
+### Verify Installation
+
+```python
+# Test import
+try:
+    from edge_gwas import EdgeGWAS
+    print("✓ edge-gwas installed successfully")
+except ImportError as e:
+    print(f"✗ Installation failed: {e}")
+```
 
 ## Package Structure
 
