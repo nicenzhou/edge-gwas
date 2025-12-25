@@ -75,32 +75,149 @@ edge-gwas/
 
 ```python
 import pandas as pd
-import dxdata
-from UKBB_GWAS_pipeline.edge_pipeline import EdgeGWAS
+import numpy as np
+from edge_gwas import EdgeGWAS
 
-# Connect to UK Biobank
+# Load your genotype data
+# Format: rows = samples, columns = SNPs
+# Values: 0 (homozygous reference), 1 (heterozygous), 2 (homozygous alternate)
+genotype_df = pd.read_csv('genotype_data.csv')
+
+# Load phenotype and covariate data
+# Format: rows = samples, columns = phenotype + covariates
+pheno_cov_df = pd.read_csv('phenotype_covariates.csv')
+
+# Example structure:
+# pheno_cov_df columns: ['sample_id', 'phenotype', 'sex', 'age', 'PC1', 'PC2', ..., 'PC10']
+```
+
+### 2. Prepare Phenotype
+
+```python
+# Binary trait example (e.g., disease status)
+# Ensure phenotype is coded as 0 (control) and 1 (case)
+pheno_cov_df['disease_status'] = pheno_cov_df['disease_status'].astype(int)
+
+# Quantitative trait example (e.g., BMI, height)
+# Remove outliers (optional)
+mean_bmi = pheno_cov_df['bmi'].mean()
+std_bmi = pheno_cov_df['bmi'].std()
+pheno_cov_df = pheno_cov_df[
+    (pheno_cov_df['bmi'] >= mean_bmi - 3*std_bmi) & 
+    (pheno_cov_df['bmi'] <= mean_bmi + 3*std_bmi)
+]
+
+# Define covariates
+covariates = ['sex', 'age', 'PC1', 'PC2', 'PC3', 'PC4', 'PC5', 
+              'PC6', 'PC7', 'PC8', 'PC9', 'PC10']
+
+# QC: Remove samples with missing data
+pheno_cov_df = pheno_cov_df.dropna(subset=['disease_status'] + covariates)
+
+print(f"Total samples after QC: {len(pheno_cov_df)}")
+```
+
+### 3. Run EDGE Analysis
+
+```python
+# Initialize EDGE
+edge = EdgeGWAS(
+    phenotype_name='disease_status',  # or 'bmi' for quantitative
+    phenotype_type='binary',           # or 'quantitative'
+    covariates=covariates,
+    maf_threshold=0.01,
+    hwe_threshold=1e-6,
+    geno_threshold=0.05
+)
+
+# Run analysis for all SNPs
+results = []
+
+for snp_name in genotype_df.columns:
+    # Get genotype for this SNP
+    genotype = genotype_df[snp_name].values
+    phenotype = pheno_cov_df['disease_status'].values
+    covariates_matrix = pheno_cov_df[covariates]
+    
+    # Run EDGE test
+    result = edge.run_snp_test(genotype, phenotype, covariates_matrix)
+    
+    if result is not None:
+        result['SNP'] = snp_name
+        results.append(result)
+
+# Convert to DataFrame
+results_df = pd.DataFrame(results)
+
+# Save results
+results_df.to_csv('edge_gwas_results.txt', sep='\t', index=False)
+print(f"Analysis complete. {len(results_df)} SNPs passed QC and were tested.")
+```
+
+### 4. Alternative: Analyze by Chromosome
+
+```python
+# If you have data split by chromosome
+chromosomes = range(1, 23)  # Chromosomes 1-22
+
+for chrom in chromosomes:
+    print(f"Processing chromosome {chrom}...")
+    
+    # Load chromosome-specific genotype data
+    geno_file = f'genotype_chr{chrom}.csv'
+    genotype_df = pd.read_csv(geno_file)
+    
+    results = []
+    for snp_name in genotype_df.columns:
+        genotype = genotype_df[snp_name].values
+        phenotype = pheno_cov_df['disease_status'].values
+        covariates_matrix = pheno_cov_df[covariates]
+        
+        result = edge.run_snp_test(genotype, phenotype, covariates_matrix)
+        
+        if result is not None:
+            result['SNP'] = snp_name
+            result['CHR'] = chrom
+            results.append(result)
+    
+    # Save chromosome results
+    results_df = pd.DataFrame(results)
+    results_df.to_csv(f'edge_results_chr{chrom}.txt', sep='\t', index=False)
+    print(f"Chromosome {chrom}: {len(results_df)} SNPs tested")
+```
+
+### 5. UK Biobank Specific Implementation
+
+```python
+# For UK Biobank users on RAP platform
+import dxdata
+
+# Connect to UK Biobank dataset
 dataset_id = "your_dataset_id"
 participant = dxdata.load_dataset(id=dataset_id)
 
-# Define fields
-fields = ["eid", "p31", "p21022"] + [f"p22009_a{i}" for i in range(1, 11)] + ["p41270"]
+# Define fields to retrieve
+fields = [
+    "eid",                              # Participant ID
+    "p31",                              # Sex
+    "p21022",                           # Age at recruitment
+] + [f"p22009_a{i}" for i in range(1, 11)] + [  # Principal components 1-10
+    "p41270"                            # ICD-10 diagnoses
+]
 
 # Retrieve as pandas DataFrame
 participant_df = participant.retrieve_fields(
     fields=fields, 
     engine=dxdata.connect()
 ).to_pandas()
-```
 
-### 2. Prepare Phenotype
-
-```python
-# Binary trait (e.g., Type 2 Diabetes)
+# Create binary phenotype from ICD-10 codes
+# Example: Type 2 Diabetes (E11)
 participant_df['diabetes_t2'] = participant_df['p41270'].apply(
     lambda x: 1 if 'E11' in str(x) else 0
 )
 
-# Rename covariates
+# Rename columns
 participant_df.rename(columns={
     'p31': 'sex',
     'p21022': 'age',
@@ -110,30 +227,12 @@ participant_df.rename(columns={
 # Define covariates
 covariates = ['sex', 'age'] + [f'PC{i}' for i in range(1, 11)]
 
-# QC: Remove missing data
+# Remove missing data
 participant_df = participant_df.dropna(subset=['diabetes_t2'] + covariates)
-```
 
-### 3. Run EDGE
-
-```python
-# Initialize
-edge = EdgeGWAS(
-    phenotype_name='diabetes_t2',
-    phenotype_type='binary',
-    covariates=covariates,
-    output_dir='/path/to/output',
-    maf_threshold=0.01
-)
-
-# Run genome-wide
-for chrom in range(1, 23):
-    print(f"Processing chromosome {chrom}...")
-    edge.run_chromosome(
-        pheno_df=participant_df,
-        chromosome=chrom,
-        dataset_id=dataset_id
-    )
+# Retrieve genotype data for specific chromosome
+# Use UK Biobank genotype extraction methods here
+# Then run EDGE analysis as shown above
 ```
 
 ## Output Files
