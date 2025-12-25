@@ -75,155 +75,377 @@ from edge_gwas import EDGEAnalysis, manhattan_plot, qq_plot
 python3 -c "from edge_gwas import EDGEAnalysis, manhattan_plot, qq_plot; print('✓ Installed successfully')"
 ```
 
-## Quick Start
+## EDGE-GWAS Package Function Reference
 
-### 1. Import and Initialize
+### Complete Workflow with All Options
+
+This section demonstrates a complete EDGE GWAS analysis workflow, showing different options at each step.
+
+#### 1. Import and Initialize
 
 ```python
 import pandas as pd
-from edge_gwas import (
-    EDGEAnalysis, 
-    load_plink_data, 
+from edge_gwas import EDGEAnalysis
+from edge_gwas.utils import (
+    load_plink_data,
     prepare_phenotype_data,
+    filter_variants_by_maf,
+    filter_variants_by_missing,
+    stratified_train_test_split,
+    calculate_genomic_inflation,
+    merge_alpha_with_gwas
+)
+from edge_gwas.visualize import (
     manhattan_plot,
     qq_plot,
     plot_alpha_distribution
 )
+from edge_gwas.io_handlers import (
+    save_results,
+    create_summary_report
+)
 
-# Initialize
+# Initialize EDGE Analysis
 edge = EDGEAnalysis(
-    outcome_type='binary', # or 'continuous'
-    n_jobs = 8, # number of core
-    max_iter=1000, # maximum iterations for model convergence
+    outcome_type='binary',    # 'binary' or 'continuous'
+    n_jobs=8,                 # Number of CPU cores (-1 for all cores)
+    max_iter=1000,            # Maximum iterations for model convergence
+    verbose=True              # Print progress information
+)
+```
+
+#### 2. Load and Prepare Data
+
+```python
+# Load genotype data from PLINK files
+genotype_data, variant_info = load_plink_data(
+    bed_file='path/to/data.bed',
+    bim_file='path/to/data.bim',
+    fam_file='path/to/data.fam',
     verbose=True
 )
-```
 
-### 2. Load Data
-
-```python
-# Load PLINK format genotype data
-genotype_data, variant_info = load_plink_data(
-    plink_prefix='path/to/plink_files',
-    chromosome=None  # None for all, or specify chromosome number
+# Load phenotype data from file
+phenotype_df = prepare_phenotype_data(
+    phenotype_file='path/to/phenotypes.txt',
+    outcome_col='disease',
+    covariate_cols=['age', 'sex', 'PC1', 'PC2', 'PC3', 'PC4', 'PC5', 
+                    'PC6', 'PC7', 'PC8', 'PC9', 'PC10'],
+    sample_id_col='IID',
+    sep='\t',
+    log_transform_outcome=False  # Set True for continuous outcomes if needed
 )
-
-# Load phenotype data
-# Index: sample IDs matching genotype data
-# Columns: outcome + covariates
-phenotype_df = pd.read_csv('phenotype_file.csv', index_col=0)
 
 # Define outcome and covariates
-outcome = 'disease'  # your outcome variable name
-covariates = ['age', 'sex', 'PC1', 'PC2', 'PC3', 'PC4', 'PC5', 
-              'PC6', 'PC7', 'PC8', 'PC9', 'PC10']
+outcome = 'disease'
+covariates = ['age', 'sex'] + [f'PC{i}' for i in range(1, 11)]
 
-# Prepare phenotype (QC and formatting)
-phenotype_df = prepare_phenotype_data(
-    phenotype_df,
-    outcome=outcome,
-    covariates=covariates,
-    remove_outliers=True  # For continuous outcomes
+print(f"Loaded {len(genotype_data)} samples, {genotype_data.shape[1]} variants")
+print(f"Phenotype data: {len(phenotype_df)} samples")
+```
+
+#### 3. Quality Control Filtering
+
+```python
+# Filter variants by MAF (remove rare variants)
+genotype_data = filter_variants_by_maf(
+    genotype_data,
+    min_maf=0.01,
+    verbose=True
+)
+
+# Filter variants by missing rate
+genotype_data = filter_variants_by_missing(
+    genotype_data,
+    max_missing=0.1,
+    verbose=True
+)
+
+print(f"After QC: {genotype_data.shape[1]} variants retained")
+```
+
+#### 4. Split Data into Training and Test Sets
+
+**Option A: Using utility function with stratification**
+
+```python
+train_geno, test_geno, train_pheno, test_pheno = stratified_train_test_split(
+    genotype_df=genotype_data,
+    phenotype_df=phenotype_df,
+    outcome_col=outcome,
+    test_size=0.5,
+    random_state=42,
+    is_binary=True  # Stratify by outcome for balanced split
 )
 ```
 
-### 3. Run Two-Stage Analysis
-
-#### Option A: One-Step (Recommended for Quick Analysis)
+**Option B: Manual split**
 
 ```python
-# Split into training and test sets
+# Simple random split
 train_samples = phenotype_df.sample(frac=0.5, random_state=42).index
 test_samples = phenotype_df.index.difference(train_samples)
 
-# Run complete analysis in one step
+train_geno = genotype_data.loc[train_samples]
+test_geno = genotype_data.loc[test_samples]
+train_pheno = phenotype_df.loc[train_samples]
+test_pheno = phenotype_df.loc[test_samples]
+```
+
+#### 5. Run EDGE Analysis
+
+**Option A: One-Step Complete Analysis (Recommended for Quick Analysis)**
+
+```python
+# Run complete two-stage analysis in one call
 alpha_df, gwas_df = edge.run_full_analysis(
-    train_genotype=genotype_data.loc[train_samples],
-    train_phenotype=phenotype_df.loc[train_samples],
-    test_genotype=genotype_data.loc[test_samples],
-    test_phenotype=phenotype_df.loc[test_samples],
+    train_genotype=train_geno,
+    train_phenotype=train_pheno,
+    test_genotype=test_geno,
+    test_phenotype=test_pheno,
     outcome=outcome,
     covariates=covariates,
     variant_info=variant_info,
-    output_prefix='edge_results'
+    output_prefix='edge_results'  # Automatically saves results
 )
 
 print(f"Tested {len(gwas_df)} variants")
 print(f"Significant (p < 5e-8): {(gwas_df['pval'] < 5e-8).sum()}")
 ```
 
-#### Option B: Two-Step (More Control and Flexibility)
+**Option B: Two-Step Analysis (More Control and Flexibility)**
 
 ```python
-# Split data
-train_samples = phenotype_df.sample(frac=0.5, random_state=42).index
-test_samples = phenotype_df.index.difference(train_samples)
-
 # Step 1: Calculate alpha values on training data
+print("Step 1: Calculating alpha values on training data...")
 alpha_df = edge.calculate_alpha(
-    genotype_data=genotype_data.loc[train_samples],
-    phenotype_df=phenotype_df.loc[train_samples],
+    genotype_data=train_geno,
+    phenotype_df=train_pheno,
     outcome=outcome,
     covariates=covariates,
     variant_info=variant_info
 )
+
+# Save alpha values
 alpha_df.to_csv('alpha_values.txt', sep='\t', index=False)
 print(f"Alpha calculated for {len(alpha_df)} variants")
+print(f"Mean alpha: {alpha_df['alpha_value'].mean():.3f}")
 
 # Step 2: Apply alpha values on test data
+print("\nStep 2: Applying alpha values on test data...")
 gwas_df = edge.apply_alpha(
-    genotype_data=genotype_data.loc[test_samples],
-    phenotype_df=phenotype_df.loc[test_samples],
+    genotype_data=test_geno,
+    phenotype_df=test_pheno,
     outcome=outcome,
     covariates=covariates,
     alpha_values=alpha_df
 )
+
+# Save GWAS results
 gwas_df.to_csv('gwas_results.txt', sep='\t', index=False)
+print(f"Tested {len(gwas_df)} variants")
 print(f"Significant (p < 5e-8): {(gwas_df['pval'] < 5e-8).sum()}")
 ```
 
-#### Option C: Use Pre-calculated Alpha Values
+**Option C: Use Pre-calculated Alpha Values**
 
 ```python
 # Load previously calculated alpha values
 alpha_df = pd.read_csv('alpha_values.txt', sep='\t')
 
+# Or use load_alpha_values utility
+from edge_gwas.io_handlers import load_alpha_values
+alpha_df = load_alpha_values('alpha_values.txt')
+
 # Apply to new test data
 gwas_df = edge.apply_alpha(
-    genotype_data=new_genotype_data,
-    phenotype_df=new_phenotype_df,
+    genotype_data=new_test_geno,
+    phenotype_df=new_test_pheno,
     outcome=outcome,
     covariates=covariates,
     alpha_values=alpha_df
 )
 ```
 
-### 4. Create Visualizations
+#### 6. Quality Control and Diagnostics
+
+```python
+# Calculate genomic inflation factor
+lambda_gc = calculate_genomic_inflation(gwas_df['pval'])
+print(f"Genomic inflation factor (λ): {lambda_gc:.3f}")
+
+# Check for skipped SNPs
+skipped_snps = edge.get_skipped_snps()
+if len(skipped_snps) > 0:
+    print(f"Warning: {len(skipped_snps)} SNPs skipped due to convergence issues")
+    
+# Merge alpha values with GWAS results for comprehensive output
+merged_df = merge_alpha_with_gwas(gwas_df, alpha_df)
+print(f"\nMerged results columns: {list(merged_df.columns)}")
+```
+
+#### 7. Create Visualizations
 
 ```python
 # Manhattan plot
 manhattan_plot(
-    gwas_df, 
+    gwas_df,
     output='manhattan.png',
-    title='My EDGE GWAS Study',
-    sig_threshold=5e-8
+    title='EDGE GWAS Manhattan Plot',
+    sig_threshold=5e-8,
+    figsize=(14, 6)
 )
 
 # QQ plot with genomic inflation factor
 lambda_gc = qq_plot(
-    gwas_df, 
+    gwas_df,
     output='qq_plot.png',
-    title='EDGE GWAS QQ Plot'
+    title='EDGE GWAS QQ Plot',
+    figsize=(8, 8)
 )
 
 # Alpha distribution plot
 plot_alpha_distribution(
     alpha_df,
     output='alpha_distribution.png',
-    bins=50
+    bins=50,
+    figsize=(10, 6)
 )
 
 print(f"Genomic inflation factor (λ): {lambda_gc:.3f}")
+```
+
+#### 8. Save Results and Generate Report
+
+```python
+# Save results with standardized format
+output_files = save_results(
+    gwas_df=gwas_df,
+    alpha_df=alpha_df,
+    output_prefix='my_edge_gwas',
+    save_alpha=True
+)
+print(f"Results saved to: {output_files}")
+
+# Generate summary report
+report = create_summary_report(
+    gwas_df=gwas_df,
+    alpha_df=alpha_df,
+    significance_threshold=5e-8,
+    output_file='summary_report.txt'
+)
+print(report)
+
+# Save merged results
+merged_df.to_csv('edge_gwas_complete_results.txt', sep='\t', index=False)
+print(f"\nAnalysis complete! Files saved:")
+print(f"  - Alpha values: {output_files['alpha']}")
+print(f"  - GWAS results: {output_files['gwas']}")
+print(f"  - Merged results: edge_gwas_complete_results.txt")
+print(f"  - Manhattan plot: manhattan.png")
+print(f"  - QQ plot: qq_plot.png")
+print(f"  - Alpha distribution: alpha_distribution.png")
+print(f"  - Summary report: summary_report.txt")
+```
+
+---
+
+### Function Reference Summary
+
+#### Core Module (`edge_gwas.core`)
+
+**Class: `EDGEAnalysis`**
+
+Main class for performing EDGE GWAS analysis.
+
+```python
+edge = EDGEAnalysis(
+    outcome_type='binary',  # 'binary' or 'continuous'
+    n_jobs=-1,              # Number of parallel jobs (-1 = all cores)
+    max_iter=1000,          # Max iterations for model fitting
+    verbose=True            # Print progress messages
+)
+```
+
+**Methods:**
+
+| Method | Purpose | Key Input | Output |
+|--------|---------|-----------|--------|
+| `calculate_alpha()` | Calculate encoding parameters from training data | Genotype, phenotype, covariates | Alpha DataFrame |
+| `apply_alpha()` | Apply alpha values to test data for GWAS | Genotype, phenotype, alpha values | GWAS results DataFrame |
+| `run_full_analysis()` | Complete two-stage workflow | Train/test genotype & phenotype | (alpha_df, gwas_df) |
+| `get_skipped_snps()` | Get list of SNPs that failed convergence | None | List of variant IDs |
+
+---
+
+#### Utilities Module (`edge_gwas.utils`)
+
+**Data Loading Functions:**
+
+| Function | Purpose | Key Input | Output |
+|----------|---------|-----------|--------|
+| `load_plink_data()` | Load PLINK binary files | .bed, .bim, .fam paths | (genotype_df, variant_info_df) |
+| `prepare_phenotype_data()` | Load and prepare phenotype data | File path, column names | Phenotype DataFrame |
+
+**Data Processing Functions:**
+
+| Function | Purpose | Key Input | Output |
+|----------|---------|-----------|--------|
+| `stratified_train_test_split()` | Split data into train/test sets | Genotype/phenotype DataFrames | (train_g, test_g, train_p, test_p) |
+| `filter_variants_by_maf()` | Filter by minor allele frequency | Genotype DataFrame, MAF threshold | Filtered DataFrame |
+| `filter_variants_by_missing()` | Filter by missingness rate | Genotype DataFrame, missing threshold | Filtered DataFrame |
+| `merge_alpha_with_gwas()` | Merge GWAS and alpha results | GWAS and alpha DataFrames | Merged DataFrame |
+
+**Statistical Functions:**
+
+| Function | Purpose | Key Input | Output |
+|----------|---------|-----------|--------|
+| `calculate_genomic_inflation()` | Calculate lambda (λ) | P-values Series | Lambda (float) |
+| `qq_plot_data()` | Prepare QQ plot data | P-values Series | (expected, observed) arrays |
+
+---
+
+#### Visualization Module (`edge_gwas.visualize`)
+
+| Function | Purpose | Key Input | Output |
+|----------|---------|-----------|--------|
+| `manhattan_plot()` | Create Manhattan plot | GWAS DataFrame | Saves PNG file |
+| `qq_plot()` | Create QQ plot | GWAS DataFrame | Saves PNG, returns lambda |
+| `plot_alpha_distribution()` | Plot alpha histogram | Alpha DataFrame | Saves PNG file |
+
+---
+
+#### I/O Handlers Module (`edge_gwas.io_handlers`)
+
+| Function | Purpose | Key Input | Output |
+|----------|---------|-----------|--------|
+| `save_results()` | Save GWAS and alpha results | DataFrames, output prefix | Dictionary of file paths |
+| `load_alpha_values()` | Load pre-calculated alpha values | File path | Alpha DataFrame |
+| `format_gwas_output()` | Format results for publication | GWAS DataFrame | Formatted DataFrame |
+| `create_summary_report()` | Generate text summary | GWAS and alpha DataFrames | Summary report string |
+
+---
+
+### Minimal Working Example
+
+```python
+"""Minimal EDGE GWAS analysis - 10 lines"""
+from edge_gwas import EDGEAnalysis
+from edge_gwas.utils import load_plink_data, prepare_phenotype_data, stratified_train_test_split
+from edge_gwas.visualize import manhattan_plot, qq_plot
+
+# Load data
+geno, info = load_plink_data('data.bed', 'data.bim', 'data.fam')
+pheno = prepare_phenotype_data('pheno.txt', 'disease', ['age', 'sex', 'PC1', 'PC2'])
+
+# Split and analyze
+train_g, test_g, train_p, test_p = stratified_train_test_split(geno, pheno, 'disease')
+edge = EDGEAnalysis(outcome_type='binary')
+alpha_df, gwas_df = edge.run_full_analysis(train_g, train_p, test_g, test_p, 'disease', ['age', 'sex', 'PC1', 'PC2'])
+
+# Visualize
+manhattan_plot(gwas_df, 'manhattan.png')
+qq_plot(gwas_df, 'qq.png')
 ```
 
 ## Key Output Files
