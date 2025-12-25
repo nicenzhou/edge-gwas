@@ -24,7 +24,6 @@ using flexible genetic encoding, rather than assuming additive inheritance.
    statistical_model
    visualization
    changelog
-   contributing
    citation
 
 Key Features
