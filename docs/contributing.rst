@@ -25,14 +25,14 @@ Getting Started
 1. Fork the Repository
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Visit https://github.com/YOUR-USERNAME/edge-gwas and click "Fork"
+Visit https://github.com/nicenzhou/Visit https://github.com/ni
 
 2. Clone Your Fork
 ~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
-   git clone https://github.com/YOUR-USERNAME/edge-gwas.git
+   git clone https://github.com/nicenzhou/edge-gwas.git
    cd edge-gwas
 
 3. Set Up Development Environment
@@ -220,7 +220,7 @@ Submitting Changes
 2. Create Pull Request
 ~~~~~~~~~~~~~~~~~~~~~~
 
-1. Go to https://github.com/YOUR-USERNAME/edge-gwas
+1. Go to https://github.com/nicenzhou/edge-gwas
 2. Click "Pull requests" → "New pull request"
 3. Select your branch
 4. Fill out the PR template:
