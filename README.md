@@ -4,6 +4,10 @@
 
 ⚠️ **Note:** This package is currently under active development and public testing.
 
+> **Previous Version:**
+> The original EDGE implementation (v0.0.0, plain Python scripts) is available at [https://github.com/nicenzhou/EDGE](https://github.com/nicenzhou/EDGE).
+> This version is **no longer maintained**; users are encouraged to migrate to v0.1.0.
+
 ## Overview
 
 EDGE-GWAS (Elastic Data-Driven Encoding GWAS) identifies nonadditive SNP effects using flexible genetic encoding, rather than assuming additive inheritance.
@@ -14,6 +18,32 @@ EDGE-GWAS (Elastic Data-Driven Encoding GWAS) identifies nonadditive SNP effects
 - Handles binary and quantitative outcomes
 - Support for PLINK format data
 - Built-in visualization functions
+
+## Statistical Model
+
+EDGE employs a flexible encoding approach based on a regression model that separately estimates effects for heterozygous and homozygous alternate genotypes:
+
+**Equation 1: Regression Model**
+
+$$E(Y | SNP_{Het}, SNP_{HA}, COV_i) = \beta_0 + \beta_{Het} \cdot SNP_{Het} + \beta_{HA} \cdot SNP_{HA} + \sum_{i} \beta_{cov_i} \cdot COV_i$$
+
+Where:
+- $Y$ = phenotype/outcome
+- $SNP_{Het}$ = indicator for heterozygous genotype
+- $SNP_{HA}$ = indicator for homozygous alternate genotype
+- $COV_i$ = covariates
+- $\beta_{Het}$ = effect size for heterozygous genotype
+- $\beta_{HA}$ = effect size for homozygous alternate genotype
+- $\beta_{cov_i}$ = effect sizes for covariates
+- 
+**Equation 2: Encoding Parameter**
+
+$$\alpha = \frac{\beta_{Het}}{\beta_{HA}}$$
+
+Where:
+- $$\alpha$$ = encoding parameter representing the ratio of heterozygous to homozygous alternate effects
+- $$\beta_{Het}$$ = effect size for heterozygous genotype (from Equation 1)
+- $$\beta_{HA}$$ = effect size for homozygous alternate genotype (from Equation 1)
 
 ## Installation
 
@@ -450,7 +480,7 @@ print(f"Median alpha: {alpha_df['alpha_value'].median():.3f}")
 - Users should migrate to version 0.1.0 or later
 
 **Repository:**
-- Available at: https://github.com/nicenzhou/EDGE (original repository)
+- Available at: [https://github.com/nicenzhou/EDGE](https://github.com/nicenzhou/EDGE) (original repository)
 - For reference only, recommended for new projects in a Python notebook
 
 ## Citation
