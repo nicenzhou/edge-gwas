@@ -75,6 +75,28 @@ from edge_gwas import EDGEAnalysis, manhattan_plot, qq_plot
 python3 -c "from edge_gwas import EDGEAnalysis, manhattan_plot, qq_plot; print('✓ Installed successfully')"
 ```
 
+## Quick Start
+
+```python
+""" Fast minimal EDGE GWAS analysis """
+from edge_gwas import EDGEAnalysis
+from edge_gwas.utils import load_plink_data, prepare_phenotype_data, stratified_train_test_split
+from edge_gwas.visualize import manhattan_plot, qq_plot
+
+# Load data
+geno, info = load_plink_data('data.bed', 'data.bim', 'data.fam')
+pheno = prepare_phenotype_data('pheno.txt', 'disease', ['age', 'sex', 'PC1', 'PC2'])
+
+# Split and analyze
+train_g, test_g, train_p, test_p = stratified_train_test_split(geno, pheno, 'disease')
+edge = EDGEAnalysis(outcome_type='binary')
+alpha_df, gwas_df = edge.run_full_analysis(train_g, train_p, test_g, test_p, 'disease', ['age', 'sex', 'PC1', 'PC2'])
+
+# Visualize
+manhattan_plot(gwas_df, 'manhattan.png')
+qq_plot(gwas_df, 'qq.png')
+```
+
 ## EDGE-GWAS Package Function Reference
 
 ### Complete Workflow with All Options
@@ -425,28 +447,6 @@ edge = EDGEAnalysis(
 | `create_summary_report()` | Generate text summary | GWAS and alpha DataFrames | Summary report string |
 
 ---
-
-### Minimal Working Example
-
-```python
-"""Minimal EDGE GWAS analysis - 10 lines"""
-from edge_gwas import EDGEAnalysis
-from edge_gwas.utils import load_plink_data, prepare_phenotype_data, stratified_train_test_split
-from edge_gwas.visualize import manhattan_plot, qq_plot
-
-# Load data
-geno, info = load_plink_data('data.bed', 'data.bim', 'data.fam')
-pheno = prepare_phenotype_data('pheno.txt', 'disease', ['age', 'sex', 'PC1', 'PC2'])
-
-# Split and analyze
-train_g, test_g, train_p, test_p = stratified_train_test_split(geno, pheno, 'disease')
-edge = EDGEAnalysis(outcome_type='binary')
-alpha_df, gwas_df = edge.run_full_analysis(train_g, train_p, test_g, test_p, 'disease', ['age', 'sex', 'PC1', 'PC2'])
-
-# Visualize
-manhattan_plot(gwas_df, 'manhattan.png')
-qq_plot(gwas_df, 'qq.png')
-```
 
 ## Key Output Files
 
