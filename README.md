@@ -18,14 +18,8 @@ EDGE-GWAS (Encoding Deviation Genotypic Effects GWAS) identifies nonadditive SNP
 ## Installation
 
 ```bash
-# Upgrade pip first
-pip install --upgrade pip
-
 # Install edge-gwas with all dependencies
 pip install git+https://github.com/nicenzhou/edge-gwas.git
-
-# For Python 3.8, ensure compatible versions
-pip install "numpy>=1.19.0,<1.25.0" "pandas>=1.1.0,<2.1.0" "matplotlib>=3.3.4,<=3.7.5"
 
 # Verify installation (use python3 on Mac/Linux)
 python3 -c "from edge_gwas import EDGEAnalysis, manhattan_plot, qq_plot; print('✓ Installed successfully')"
@@ -84,12 +78,14 @@ phenotype_df = prepare_phenotype_data(
 
 ### 3. Run Two-Stage Analysis
 
+#### Option A: One-Step (Recommended for Quick Analysis)
+
 ```python
 # Split into training and test sets
 train_samples = phenotype_df.sample(frac=0.5, random_state=42).index
 test_samples = phenotype_df.index.difference(train_samples)
 
-# Run complete analysis
+# Run complete analysis in one step
 alpha_df, gwas_df = edge.run_full_analysis(
     train_genotype=genotype_data.loc[train_samples],
     train_phenotype=phenotype_df.loc[train_samples],
@@ -101,9 +97,54 @@ alpha_df, gwas_df = edge.run_full_analysis(
     output_prefix='edge_results'
 )
 
-# Check results
 print(f"Tested {len(gwas_df)} variants")
 print(f"Significant (p < 5e-8): {(gwas_df['pval'] < 5e-8).sum()}")
+```
+
+#### Option B: Two-Step (More Control and Flexibility)
+
+```python
+# Split data
+train_samples = phenotype_df.sample(frac=0.5, random_state=42).index
+test_samples = phenotype_df.index.difference(train_samples)
+
+# Step 1: Calculate alpha values on training data
+alpha_df = edge.calculate_alpha(
+    genotype_data=genotype_data.loc[train_samples],
+    phenotype_df=phenotype_df.loc[train_samples],
+    outcome=outcome,
+    covariates=covariates,
+    variant_info=variant_info
+)
+alpha_df.to_csv('alpha_values.txt', sep='\t', index=False)
+print(f"Alpha calculated for {len(alpha_df)} variants")
+
+# Step 2: Apply alpha values on test data
+gwas_df = edge.apply_alpha(
+    genotype_data=genotype_data.loc[test_samples],
+    phenotype_df=phenotype_df.loc[test_samples],
+    outcome=outcome,
+    covariates=covariates,
+    alpha_values=alpha_df
+)
+gwas_df.to_csv('gwas_results.txt', sep='\t', index=False)
+print(f"Significant (p < 5e-8): {(gwas_df['pval'] < 5e-8).sum()}")
+```
+
+#### Option C: Use Pre-calculated Alpha Values
+
+```python
+# Load previously calculated alpha values
+alpha_df = pd.read_csv('alpha_values.txt', sep='\t')
+
+# Apply to new test data
+gwas_df = edge.apply_alpha(
+    genotype_data=new_genotype_data,
+    phenotype_df=new_phenotype_df,
+    outcome=outcome,
+    covariates=covariates,
+    alpha_values=alpha_df
+)
 ```
 
 ### 4. Create Visualizations
