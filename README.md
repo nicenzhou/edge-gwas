@@ -438,7 +438,7 @@ print(f"Median alpha: {alpha_df['alpha_value'].median():.3f}")
 
 **Repository:**
 - Available at: https://github.com/nicenzhou/EDGE (original repository)
-- For reference only, recommended for new projects in Python notebook
+- For reference only, recommended for new projects in a Python notebook
 
 ## Citation
 
