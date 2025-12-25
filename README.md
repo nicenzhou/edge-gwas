@@ -15,7 +15,7 @@ EDGE-GWAS (Encoding Deviation Genotypic Effects GWAS) identifies nonadditive SNP
 
 ## Installation
 
-$$$bash
+```bash
 # Upgrade pip first
 pip install --upgrade pip
 
@@ -24,13 +24,13 @@ pip install git+https://github.com/nicenzhou/edge-gwas.git
 
 # Verify (use python3 on Mac/Linux)
 python3 -c "from edge_gwas import EDGEAnalysis; print('✓ Installed successfully')"
-$$$
+```
 
 ## Quick Start
 
 ### 1. Import and Initialize
 
-$$$python
+```python
 import pandas as pd
 from edge_gwas import EDGEAnalysis, load_plink_data, prepare_phenotype_data
 
@@ -40,11 +40,11 @@ edge = EDGEAnalysis(
     maf_threshold=0.01,
     verbose=True
 )
-$$$
+```
 
 ### 2. Load Data
 
-$$$python
+```python
 # Load PLINK format genotype data
 genotype_data, variant_info = load_plink_data(
     plink_prefix='path/to/plink_files',
@@ -68,11 +68,11 @@ phenotype_df = prepare_phenotype_data(
     covariates=covariates,
     remove_outliers=True  # For continuous outcomes
 )
-$$$
+```
 
 ### 3. Run Two-Stage Analysis
 
-$$$python
+```python
 # Split into training and test sets
 train_samples = phenotype_df.sample(frac=0.5, random_state=42).index
 test_samples = phenotype_df.index.difference(train_samples)
@@ -92,7 +92,7 @@ alpha_df, gwas_df = edge.run_full_analysis(
 # Check results
 print(f"Tested {len(gwas_df)} variants")
 print(f"Significant (p < 5e-8): {(gwas_df['pval'] < 5e-8).sum()}")
-$$$
+```
 
 ## Key Output Files
 
@@ -113,7 +113,7 @@ $$$
 
 ### Manhattan Plot
 
-$$$python
+```python
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -137,11 +137,11 @@ def manhattan_plot(gwas_df, output='manhattan.png'):
     plt.savefig(output, dpi=300, bbox_inches='tight')
 
 manhattan_plot(gwas_df)
-$$$
+```
 
 ### QQ Plot
 
-$$$python
+```python
 from scipy import stats
 
 def qq_plot(gwas_df, output='qq_plot.png'):
@@ -167,13 +167,13 @@ def qq_plot(gwas_df, output='qq_plot.png'):
     plt.savefig(output, dpi=300, bbox_inches='tight')
 
 qq_plot(gwas_df)
-$$$
+```
 
 ## Citation
 
 Zhou, J., et al. (2023). Flexibly encoded genome-wide association study identifies novel nonadditive genetic risk variants for cardiometabolic traits. *medRxiv*, 2023.06.01.23290857. https://doi.org/10.1101/2023.06.01.23290857
 
-$$$bibtex
+```bibtex
 @article{zhou2023edgegwas,
   title={Flexibly encoded genome-wide association study identifies novel nonadditive genetic risk variants for cardiometabolic traits},
   author={Zhou, Jiayan and Rico, Andre Luis Garao and Guare, Lindsay and others},
@@ -181,7 +181,7 @@ $$$bibtex
   year={2023},
   doi={10.1101/2023.06.01.23290857}
 }
-$$$
+```
 
 ## Contact
 
