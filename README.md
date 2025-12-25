@@ -43,7 +43,8 @@ from edge_gwas import (
 # Initialize
 edge = EDGEAnalysis(
     outcome_type='binary',    # or 'continuous'
-    maf_threshold=0.01,
+    n_jobs = 8, # number of core
+    max_iter=1000,  # maximum iterations for model convergence
     verbose=True
 )
 ```
@@ -393,7 +394,6 @@ print(f"Median alpha: {alpha_df['alpha_value'].median():.3f}")
 - Support for binary and quantitative outcomes
 - PLINK format data loading
 - Built-in visualization functions (Manhattan plot, QQ plot, alpha distribution)
-- Automatic quality control filters (MAF, HWE, missingness)
 - Genomic inflation factor calculation
 
 **Available Functions:**
@@ -431,7 +431,7 @@ print(f"Median alpha: {alpha_df['alpha_value'].median():.3f}")
 
 **Repository:**
 - Available at: https://github.com/nicenzhou/EDGE (original repository)
-- For reference only, not recommended for new projects
+- For reference only, recommended for new projects in Python notebook
 
 ## Citation
 
