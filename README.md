@@ -1,6 +1,7 @@
 # EDGE GWAS Implementation Guide
 
 ## Version 0.0.0 (Under Public Testing)
+
 ⚠️ **Note:** This package is currently under active development and public testing.
 
 ## Overview
@@ -12,27 +13,38 @@ EDGE-GWAS (Encoding Deviation Genotypic Effects GWAS) identifies nonadditive SNP
 - Detects recessive, dominant, and over-dominant effects
 - Handles binary and quantitative outcomes
 - Support for PLINK format data
+- Built-in visualization functions
 
 ## Installation
 
-```bash
+$$$bash
 # Upgrade pip first
 pip install --upgrade pip
 
-# Install edge-gwas
+# Install edge-gwas with all dependencies
 pip install git+https://github.com/nicenzhou/edge-gwas.git
 
-# Verify (use python3 on Mac/Linux)
-python3 -c "from edge_gwas import EDGEAnalysis; print('✓ Installed successfully')"
-```
+# For Python 3.8, ensure compatible versions
+pip install "numpy>=1.19.0,<1.25.0" "pandas>=1.1.0,<2.1.0" "matplotlib>=3.3.4,<=3.7.5"
+
+# Verify installation (use python3 on Mac/Linux)
+python3 -c "from edge_gwas import EDGEAnalysis, manhattan_plot, qq_plot; print('✓ Installed successfully')"
+$$$
 
 ## Quick Start
 
 ### 1. Import and Initialize
 
-```python
+$$$python
 import pandas as pd
-from edge_gwas import EDGEAnalysis, load_plink_data, prepare_phenotype_data
+from edge_gwas import (
+    EDGEAnalysis, 
+    load_plink_data, 
+    prepare_phenotype_data,
+    manhattan_plot,
+    qq_plot,
+    plot_alpha_distribution
+)
 
 # Initialize
 edge = EDGEAnalysis(
@@ -40,11 +52,11 @@ edge = EDGEAnalysis(
     maf_threshold=0.01,
     verbose=True
 )
-```
+$$$
 
 ### 2. Load Data
 
-```python
+$$$python
 # Load PLINK format genotype data
 genotype_data, variant_info = load_plink_data(
     plink_prefix='path/to/plink_files',
@@ -68,11 +80,11 @@ phenotype_df = prepare_phenotype_data(
     covariates=covariates,
     remove_outliers=True  # For continuous outcomes
 )
-```
+$$$
 
 ### 3. Run Two-Stage Analysis
 
-```python
+$$$python
 # Split into training and test sets
 train_samples = phenotype_df.sample(frac=0.5, random_state=42).index
 test_samples = phenotype_df.index.difference(train_samples)
@@ -92,7 +104,35 @@ alpha_df, gwas_df = edge.run_full_analysis(
 # Check results
 print(f"Tested {len(gwas_df)} variants")
 print(f"Significant (p < 5e-8): {(gwas_df['pval'] < 5e-8).sum()}")
-```
+$$$
+
+### 4. Create Visualizations
+
+$$$python
+# Manhattan plot
+manhattan_plot(
+    gwas_df, 
+    output='manhattan.png',
+    title='My EDGE GWAS Study',
+    sig_threshold=5e-8
+)
+
+# QQ plot with genomic inflation factor
+lambda_gc = qq_plot(
+    gwas_df, 
+    output='qq_plot.png',
+    title='EDGE GWAS QQ Plot'
+)
+
+# Alpha distribution plot
+plot_alpha_distribution(
+    alpha_df,
+    output='alpha_distribution.png',
+    bins=50
+)
+
+print(f"Genomic inflation factor (λ): {lambda_gc:.3f}")
+$$$
 
 ## Key Output Files
 
@@ -109,15 +149,70 @@ print(f"Significant (p < 5e-8): {(gwas_df['pval'] < 5e-8).sum()}")
 - `alpha_value`: Applied alpha
 - `std_err`, `stat`: Statistics
 
-## Visualization
+## Visualization Functions
 
-### Manhattan Plot
+### Using Built-in Functions (Recommended)
 
-```python
+$$$python
+from edge_gwas import manhattan_plot, qq_plot, plot_alpha_distribution
+
+# Manhattan plot
+manhattan_plot(
+    gwas_df,                    # GWAS results DataFrame
+    output='manhattan.png',     # Output filename
+    title='EDGE GWAS',          # Plot title
+    sig_threshold=5e-8,         # Significance threshold
+    figsize=(14, 6),            # Figure size
+    colors=['#1f77b4', '#ff7f0e']  # Chromosome colors
+)
+
+# QQ plot
+lambda_gc = qq_plot(
+    gwas_df,                    # GWAS results DataFrame
+    output='qq_plot.png',       # Output filename
+    title='QQ Plot',            # Plot title
+    figsize=(8, 8)              # Figure size
+)
+
+# Alpha distribution
+plot_alpha_distribution(
+    alpha_df,                   # Alpha values DataFrame
+    output='alpha_dist.png',    # Output filename
+    bins=50,                    # Number of bins
+    figsize=(10, 6)             # Figure size
+)
+$$$
+
+### Multiple Chromosomes
+
+$$$python
+# Combine results from multiple chromosomes
+gwas_chr1 = pd.read_csv('edge_chr1_gwas.txt', sep='\t')
+gwas_chr2 = pd.read_csv('edge_chr2_gwas.txt', sep='\t')
+gwas_chr3 = pd.read_csv('edge_chr3_gwas.txt', sep='\t')
+
+# Pass as list to manhattan_plot
+manhattan_plot(
+    [gwas_chr1, gwas_chr2, gwas_chr3],
+    output='all_chromosomes_manhattan.png'
+)
+
+# Or concatenate first
+all_results = pd.concat([gwas_chr1, gwas_chr2, gwas_chr3])
+qq_plot(all_results, output='all_chromosomes_qq.png')
+$$$
+
+### Custom Visualization (Alternative)
+
+If you prefer to customize further:
+
+$$$python
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy import stats
 
-def manhattan_plot(gwas_df, output='manhattan.png'):
+def custom_manhattan_plot(gwas_df, output='manhattan.png'):
+    """Custom Manhattan plot with additional features"""
     gwas_df['-log10p'] = -np.log10(gwas_df['pval'])
     
     fig, ax = plt.subplots(figsize=(14, 6))
@@ -130,21 +225,22 @@ def manhattan_plot(gwas_df, output='manhattan.png'):
                   c=colors[int(chrom) % 2], s=2, alpha=0.7)
         x_pos += len(data)
     
+    # Significance lines
     ax.axhline(-np.log10(5e-8), color='red', linestyle='--', label='p=5e-8')
-    ax.set_xlabel('Chromosome')
-    ax.set_ylabel('-log₁₀(p-value)')
-    ax.set_title('EDGE GWAS Manhattan Plot')
+    ax.axhline(-np.log10(1e-5), color='blue', linestyle=':', label='p=1e-5')
+    
+    ax.set_xlabel('Chromosome', fontsize=12)
+    ax.set_ylabel('-log₁₀(p-value)', fontsize=12)
+    ax.set_title('EDGE GWAS Manhattan Plot', fontsize=14)
+    ax.legend()
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    plt.tight_layout()
     plt.savefig(output, dpi=300, bbox_inches='tight')
+    plt.close()
 
-manhattan_plot(gwas_df)
-```
-
-### QQ Plot
-
-```python
-from scipy import stats
-
-def qq_plot(gwas_df, output='qq_plot.png'):
+def custom_qq_plot(gwas_df, output='qq_plot.png'):
+    """Custom QQ plot with genomic inflation factor"""
     pvals = gwas_df['pval'].dropna()
     pvals = pvals[pvals > 0]
     
@@ -157,23 +253,99 @@ def qq_plot(gwas_df, output='qq_plot.png'):
     lambda_gc = np.median(chisq) / stats.chi2.ppf(0.5, df=1)
     
     fig, ax = plt.subplots(figsize=(8, 8))
-    ax.scatter(expected, observed, s=10, alpha=0.5)
+    ax.scatter(expected, observed, s=10, alpha=0.5, color='blue')
+    
+    # Diagonal line
     max_val = max(expected.max(), observed.max())
-    ax.plot([0, max_val], [0, max_val], 'r--', linewidth=2)
-    ax.text(0.05, 0.95, f'λ = {lambda_gc:.3f}', transform=ax.transAxes,
+    ax.plot([0, max_val], [0, max_val], 'r--', linewidth=2, label='Expected')
+    
+    # Lambda annotation
+    ax.text(0.05, 0.95, f'λ = {lambda_gc:.3f}', 
+            transform=ax.transAxes, fontsize=12, verticalalignment='top',
             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-    ax.set_xlabel('Expected -log₁₀(p)')
-    ax.set_ylabel('Observed -log₁₀(p)')
+    
+    ax.set_xlabel('Expected -log₁₀(p)', fontsize=12)
+    ax.set_ylabel('Observed -log₁₀(p)', fontsize=12)
+    ax.set_title('QQ Plot', fontsize=14)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
     plt.savefig(output, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    return lambda_gc
 
-qq_plot(gwas_df)
-```
+# Usage
+custom_manhattan_plot(gwas_df)
+lambda_gc = custom_qq_plot(gwas_df)
+print(f"λ = {lambda_gc:.3f}")
+$$$
+
+## Complete Analysis Example
+
+$$$python
+"""Complete EDGE GWAS workflow with visualizations"""
+
+from edge_gwas import (
+    EDGEAnalysis,
+    load_plink_data,
+    prepare_phenotype_data,
+    manhattan_plot,
+    qq_plot,
+    plot_alpha_distribution
+)
+import pandas as pd
+
+# 1. Load data
+genotype_data, variant_info = load_plink_data('data/genotypes')
+phenotype_df = pd.read_csv('data/phenotypes.csv', index_col=0)
+
+# 2. Prepare phenotype
+phenotype_df = prepare_phenotype_data(
+    phenotype_df,
+    outcome='disease',
+    covariates=['age', 'sex'] + [f'PC{i}' for i in range(1, 11)],
+    remove_outliers=True
+)
+
+# 3. Initialize EDGE
+edge = EDGEAnalysis(outcome_type='binary', verbose=True)
+
+# 4. Split data
+train_idx = phenotype_df.sample(frac=0.5, random_state=42).index
+test_idx = phenotype_df.index.difference(train_idx)
+
+# 5. Run analysis
+alpha_df, gwas_df = edge.run_full_analysis(
+    train_genotype=genotype_data.loc[train_idx],
+    train_phenotype=phenotype_df.loc[train_idx],
+    test_genotype=genotype_data.loc[test_idx],
+    test_phenotype=phenotype_df.loc[test_idx],
+    outcome='disease',
+    covariates=['age', 'sex'] + [f'PC{i}' for i in range(1, 11)],
+    output_prefix='results/edge_analysis'
+)
+
+# 6. Create visualizations
+manhattan_plot(gwas_df, output='results/manhattan.png')
+lambda_gc = qq_plot(gwas_df, output='results/qq_plot.png')
+plot_alpha_distribution(alpha_df, output='results/alpha_dist.png')
+
+# 7. Summary
+print(f"\n=== Analysis Summary ===")
+print(f"Total variants tested: {len(gwas_df)}")
+print(f"Significant hits (p<5e-8): {(gwas_df['pval'] < 5e-8).sum()}")
+print(f"Genomic inflation (λ): {lambda_gc:.3f}")
+print(f"Mean alpha: {alpha_df['alpha_value'].mean():.3f}")
+print(f"Median alpha: {alpha_df['alpha_value'].median():.3f}")
+$$$
 
 ## Citation
 
 Zhou, J., et al. (2023). Flexibly encoded genome-wide association study identifies novel nonadditive genetic risk variants for cardiometabolic traits. *medRxiv*, 2023.06.01.23290857. https://doi.org/10.1101/2023.06.01.23290857
 
-```bibtex
+$$$bibtex
 @article{zhou2023edgegwas,
   title={Flexibly encoded genome-wide association study identifies novel nonadditive genetic risk variants for cardiometabolic traits},
   author={Zhou, Jiayan and Rico, Andre Luis Garao and Guare, Lindsay and others},
@@ -181,7 +353,7 @@ Zhou, J., et al. (2023). Flexibly encoded genome-wide association study identifi
   year={2023},
   doi={10.1101/2023.06.01.23290857}
 }
-```
+$$$
 
 ## Contact
 
@@ -189,5 +361,7 @@ Zhou, J., et al. (2023). Flexibly encoded genome-wide association study identifi
 **Code Questions:** Jiayan Zhou - jyzhou@stanford.edu
 
 ## License
-
+## License
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+[![GPL Logo](https://www.gnu.org/graphics/gplv3-88x31.png)](https://www.gnu.org/licenses/gpl-3.0)
