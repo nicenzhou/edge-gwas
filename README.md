@@ -1,6 +1,6 @@
 # EDGE GWAS Implementation Guide
 
-## Version 0.0.0 (Under Public Testing)
+## Version 0.1.0 (Under Public Testing)
 
 ⚠️ **Note:** This package is currently under active development and public testing.
 
@@ -381,6 +381,57 @@ print(f"Genomic inflation (λ): {lambda_gc:.3f}")
 print(f"Mean alpha: {alpha_df['alpha_value'].mean():.3f}")
 print(f"Median alpha: {alpha_df['alpha_value'].median():.3f}")
 ```
+
+## Version History 
+
+### Version 0.1.0 (Current - Under Public Testing)
+**Release Date:** December 2025  
+**Status:** ⚠️ Public Testing Phase
+
+**Initial Release Features:**
+- Two-stage EDGE analysis (calculate alpha + apply alpha)
+- Support for binary and quantitative outcomes
+- PLINK format data loading
+- Built-in visualization functions (Manhattan plot, QQ plot, alpha distribution)
+- Automatic quality control filters (MAF, HWE, missingness)
+- Genomic inflation factor calculation
+
+**Available Functions:**
+- `EDGEAnalysis` class with methods:
+  - `calculate_alpha()` - Calculate encoding parameters from training data
+  - `apply_alpha()` - Apply encoding to test data
+  - `run_full_analysis()` - Complete two-stage workflow
+  - `get_skipped_snps()` - Retrieve SNPs with convergence issues
+- `load_plink_data()` - Load genotype data from PLINK files
+- `prepare_phenotype_data()` - QC and format phenotype data
+- `manhattan_plot()` - Create Manhattan plots
+- `qq_plot()` - Create QQ plots with lambda calculation
+- `plot_alpha_distribution()` - Visualize alpha value distribution
+
+**Known Issues:**
+- Package under active development
+- Documentation is being expanded
+- Additional test coverage needed
+
+### Version 0.0.0 (Plain Python Codes)
+**Release Date:** April 2024  
+**Status:** Closed, no further maintenance
+
+**Legacy Features:**
+- Basic EDGE analysis implementation
+- Standalone Python scripts
+- No package structure
+- Manual dependency management
+
+**Notes:**
+- This version consisted of individual Python scripts
+- Required manual setup and configuration
+- No pip installation available
+- Users should migrate to version 0.1.0 or later
+
+**Repository:**
+- Available at: https://github.com/nicenzhou/EDGE (original repository)
+- For reference only, not recommended for new projects
 
 ## Citation
 
