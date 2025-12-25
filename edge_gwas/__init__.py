@@ -18,9 +18,13 @@ __email__ = "jyzhou@stanford.edu"
 
 from .core import EDGEAnalysis
 from .utils import load_plink_data, prepare_phenotype_data
+from .visualize import manhattan_plot, qq_plot, plot_alpha_distribution
 
 __all__ = [
     "EDGEAnalysis",
     "load_plink_data",
     "prepare_phenotype_data",
+    "manhattan_plot",
+    "qq_plot",
+    "plot_alpha_distribution",
 ]
