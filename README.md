@@ -19,18 +19,6 @@ $$E(Y | SNP_{Het}, SNP_{HA}, COV_i) = \beta_0 + \beta_{Het} \cdot SNP_{Het} + \b
 
 $$\alpha = \frac{\beta_{Het}}{\beta_{HA}}$$
 
-## Inheritance Models
-
-| Pattern | α Range | Description |
-|---------|---------|-------------|
-| Under-recessive | α < 0 | Het effect opposite to HomAlt |
-| Recessive | 0 ≤ α < 0.125 | Effect mainly in HomAlt |
-| Sub-additive | 0.125 ≤ α < 0.375 | Het < 0.5 × HomAlt |
-| Additive | 0.375 ≤ α < 0.625 | Het ≈ 0.5 × HomAlt |
-| Super-additive | 0.625 ≤ α < 0.875 | Het > 0.5 × HomAlt |
-| Dominant | 0.875 ≤ α ≤ 1 | Het ≈ HomAlt |
-| Over-dominant | α > 1 | Het > HomAlt |
-
 ## Installation
 
 ```bash
