@@ -1,25 +1,27 @@
-# Read the Docs configuration file for edge-gwas
+# .readthedocs.yaml
+# Read the Docs configuration file
 # See https://docs.readthedocs.io/en/stable/config-file/v2.html
 
 version: 2
 
-# Set the OS, Python version and other tools you might need
+# Build configuration
 build:
   os: ubuntu-22.04
   tools:
     python: "3.9"
 
-# Build documentation with Sphinx
+# Sphinx configuration
 sphinx:
   configuration: docs/conf.py
+  builder: html
   fail_on_warning: false
 
-# Build additional formats
+# Build formats
 formats:
   - pdf
   - epub
 
-# Python dependencies
+# Python configuration
 python:
   install:
     - requirements: docs/requirements.txt
