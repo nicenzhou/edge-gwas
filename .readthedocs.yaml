@@ -1,0 +1,22 @@
+# Read the Docs configuration file for edge-gwas
+# See https://docs.readthedocs.io/en/stable/config-file/v2.html
+
+version: 2
+
+# Build documentation with Sphinx
+sphinx:
+  configuration: docs/conf.py
+  fail_on_warning: false
+
+# Build additional formats
+formats:
+  - pdf
+  - epub
+
+# Python environment
+python:
+  version: "3.9"
+  install:
+    - requirements: docs/requirements.txt
+    - method: pip
+      path: .
