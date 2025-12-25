@@ -445,6 +445,7 @@ print(f"Median alpha: {alpha_df['alpha_value'].median():.3f}")
 - PLINK format data loading
 - Built-in visualization functions (Manhattan plot, QQ plot, alpha distribution)
 - Genomic inflation factor calculation
+- Automatic quality control filters (MAF, HWE, missingness)
 
 **Available Functions:**
 - `EDGEAnalysis` class with methods:
