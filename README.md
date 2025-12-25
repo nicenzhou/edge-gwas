@@ -19,11 +19,33 @@ $$E(Y | SNP_{Het}, SNP_{HA}, COV_i) = \beta_0 + \beta_{Het} \cdot SNP_{Het} + \b
 
 $$\alpha = \frac{\beta_{Het}}{\beta_{HA}}$$
 
-## Installation
+## Installation & Setup
+
+### Option 1: Install from GitHub (Recommended)
 
 ```bash
 pip install git+https://github.com/G2lab/UKBB_GWAS_pipeline.git
 ```
+
+### Option 2: Manual Installation
+
+If the packaged version is not available, you can use the standalone EDGE implementation:
+
+```bash
+# Clone the repository
+git clone https://github.com/nicenzhou/EDGE.git
+cd EDGE
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Required Dependencies
+
+```bash
+pip install pandas numpy scipy statsmodels matplotlib seaborn dxpy dxdata
+```
+
 
 ## Package Structure
 
