@@ -12,7 +12,7 @@ References:
     genetic interactions. PLoS Genetics 17, e1009534 (2021).
 """
 
-__version__ = "1.0.0"
+__version__ = "0.0.0"
 __author__ = "Jiayan Zhou"
 __email__ = "jyzhou@stanford.edu"
 
