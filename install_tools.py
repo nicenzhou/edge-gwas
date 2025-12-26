@@ -1,7 +1,4 @@
-"""
-Interactive installer for external tools.
-"""
-
+"""Interactive installer for external tools."""
 import sys
 import subprocess
 import platform
@@ -14,7 +11,6 @@ from pathlib import Path
 
 def main():
     """Interactive installation of external tools."""
-    
     installer = ExternalToolsInstaller()
     
     print("\n" + "="*70)
@@ -34,7 +30,6 @@ def main():
         return 1
     
     print("\nStarting installation...\n")
-    
     installer.install_all()
     
     print("\nInstallation complete!")
@@ -125,191 +120,96 @@ class ExternalToolsInstaller:
         print("Installing PLINK2...")
         
         if self.system == 'Linux':
-            url = 'https://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20251205.zip'
-            archive_name = 'plink2_linux.zip'
-            binary_name = 'plink2'
+            url = 'https://s3.amazonaws.com/plink2-assets/alpha5/plink2_linux_x86_64_latest.zip'
         elif self.system == 'Darwin':  # macOS
-            url = 'https://s3.amazonaws.com/plink2-assets/plink2_mac_20251205.zip'
-            archive_name = 'plink2_mac.zip'
-            binary_name = 'plink2'
+            url = 'https://s3.amazonaws.com/plink2-assets/alpha5/plink2_mac_latest.zip'
         else:
             print(f"  PLINK2 auto-installation not supported on {self.system}")
-            print(f"  Please install manually from: https://www.cog-genomics.org/plink/2.0/")
             return
         
-        # Download
-        download_path = self.bin_dir / archive_name
+        zip_path = self.bin_dir / 'plink2.zip'
         print(f"  Downloading from {url}...")
+        urllib.request.urlretrieve(url, zip_path)
         
-        try:
-            urllib.request.urlretrieve(url, download_path)
-        except Exception as e:
-            raise Exception(f"Download failed: {e}")
-        
-        # Extract
         print(f"  Extracting...")
-        try:
-            with zipfile.ZipFile(download_path, 'r') as zip_ref:
-                zip_ref.extractall(self.bin_dir)
-        except Exception as e:
-            download_path.unlink(missing_ok=True)
-            raise Exception(f"Extraction failed: {e}")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(self.bin_dir)
         
-        # Make executable
-        binary_path = self.bin_dir / binary_name
-        try:
-            binary_path.chmod(0o755)
-        except Exception as e:
-            print(f"  Warning: Could not set executable permissions: {e}")
+        binary_path = self.bin_dir / 'plink2'
+        binary_path.chmod(0o755)
+        zip_path.unlink()
         
-        # Clean up
-        download_path.unlink(missing_ok=True)
-        
-        # Verify
-        try:
-            result = subprocess.run([str(binary_path), '--version'], 
-                                  capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                print(f"  ✓ PLINK2 installed successfully at {binary_path}")
-            else:
-                print(f"  ✗ PLINK2 installation verification failed")
-        except Exception as e:
-            print(f"  Warning: Could not verify installation: {e}")
+        print(f"  ✓ PLINK2 installed successfully at {binary_path}")
     
     def install_gcta(self):
         """Install GCTA."""
         print("Installing GCTA...")
         
         if self.system == 'Linux':
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-linux-kernel-3-x86_64.zip'
-            archive_name = 'gcta_linux.zip'
-            binary_name = 'gcta64'
+            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip'
             extract_dir = 'gcta-1.94.1-linux-kernel-3-x86_64'
         elif self.system == 'Darwin':  # macOS
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-macOS-arm64.zip'
-            archive_name = 'gcta_mac.zip'
-            binary_name = 'gcta64'
+            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-MacOS-x86_64.zip'
             extract_dir = 'gcta-1.94.1-MacOS-x86_64'
         else:
             print(f"  GCTA auto-installation not supported on {self.system}")
-            print(f"  Please install manually from: https://yanglab.westlake.edu.cn/software/gcta/")
             return
         
-        # Download
-        download_path = self.bin_dir / archive_name
+        zip_path = self.bin_dir / 'gcta.zip'
         print(f"  Downloading from {url}...")
+        urllib.request.urlretrieve(url, zip_path)
         
-        try:
-            urllib.request.urlretrieve(url, download_path)
-        except Exception as e:
-            raise Exception(f"Download failed: {e}")
-        
-        # Extract
         print(f"  Extracting...")
-        try:
-            with zipfile.ZipFile(download_path, 'r') as zip_ref:
-                zip_ref.extractall(self.bin_dir)
-        except Exception as e:
-            download_path.unlink(missing_ok=True)
-            raise Exception(f"Extraction failed: {e}")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(self.bin_dir)
         
-        # Move binary
-        source_binary = self.bin_dir / extract_dir / binary_name
-        dest_binary = self.bin_dir / binary_name
+        source_binary = self.bin_dir / extract_dir / 'gcta64'
+        dest_binary = self.bin_dir / 'gcta64'
         
-        if source_binary.exists():
-            try:
-                shutil.move(str(source_binary), str(dest_binary))
-                dest_binary.chmod(0o755)
-                
-                # Clean up
-                shutil.rmtree(self.bin_dir / extract_dir, ignore_errors=True)
-                download_path.unlink(missing_ok=True)
-                
-                # Verify
-                result = subprocess.run([str(dest_binary), '--version'], 
-                                      capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
-                    print(f"  ✓ GCTA installed successfully at {dest_binary}")
-                else:
-                    print(f"  ✗ GCTA installation verification failed")
-            except Exception as e:
-                print(f"  Warning: Installation completed but verification failed: {e}")
-        else:
-            print(f"  ✗ GCTA binary not found after extraction")
+        shutil.move(str(source_binary), str(dest_binary))
+        dest_binary.chmod(0o755)
+        shutil.rmtree(self.bin_dir / extract_dir)
+        zip_path.unlink()
+        
+        print(f"  ✓ GCTA installed successfully at {dest_binary}")
     
     def install_r_packages(self):
         """Install R packages for PC-AiR."""
         print("Installing R packages for PC-AiR...")
         
-        # Check if R is installed
         try:
-            result = subprocess.run(['R', '--version'], 
-                                  capture_output=True, text=True, timeout=5)
+            result = subprocess.run(['R', '--version'], capture_output=True, text=True, timeout=5)
             if result.returncode != 0:
                 print("  R is not installed. Skipping R package installation.")
-                print("  Install R from: https://www.r-project.org/")
                 return
         except FileNotFoundError:
             print("  R is not installed. Skipping R package installation.")
-            print("  Install R from: https://www.r-project.org/")
-            return
-        except Exception as e:
-            print(f"  Could not check R installation: {e}")
             return
         
-        # Create R installation script
-        r_script = """
-# Install BiocManager if needed
+        r_script = '''
 if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager", repos="https://cloud.r-project.org")
 }
 
-# Install packages
 packages <- c("GENESIS", "SNPRelate", "gdsfmt")
 
 for (pkg in packages) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
         cat(paste("Installing", pkg, "...\\n"))
-        tryCatch({
-            BiocManager::install(pkg, update = FALSE, ask = FALSE)
-            cat(paste(pkg, "installed successfully\\n"))
-        }, error = function(e) {
-            cat(paste("Error installing", pkg, ":", e$message, "\\n"))
-        })
-    } else {
-        cat(paste(pkg, "already installed\\n"))
+        BiocManager::install(pkg, update = FALSE, ask = FALSE)
     }
 }
-
-cat("\\nR packages installation complete!\\n")
-"""
+cat("R packages installation complete!\\n")
+'''
         
-        script_path = self.bin_dir / 'install_r_packages.R'
-        with open(script_path, 'w') as f:
-            f.write(r_script)
+        script_file = self.bin_dir / 'install_r_packages.R'
+        script_file.write_text(r_script)
         
-        # Run R script
         print("  Installing GENESIS, SNPRelate, and gdsfmt...")
-        print("  (This may take several minutes...)")
+        subprocess.run(['Rscript', str(script_file)], timeout=600)
+        script_file.unlink()
         
-        try:
-            result = subprocess.run(['Rscript', str(script_path)],
-                                  capture_output=True, text=True, timeout=600)  # 10 min timeout
-            
-            if result.returncode == 0:
-                print("  ✓ R packages installed successfully")
-            else:
-                print("  ✗ R package installation failed")
-                if result.stderr:
-                    print(f"  Error: {result.stderr[:500]}")  # Print first 500 chars
-        except subprocess.TimeoutExpired:
-            print("  ✗ R package installation timed out (>10 minutes)")
-        except Exception as e:
-            print(f"  ✗ R package installation failed: {e}")
-        
-        # Clean up
-        script_path.unlink(missing_ok=True)
+        print("  ✓ R packages installed successfully")
 
 
 if __name__ == '__main__':
