@@ -56,22 +56,67 @@ class ExternalToolsInstaller:
             self.ssl_context = None
     
     def download_file(self, url, destination):
-        """Download file handling SSL issues."""
-        try:
-            # Try with SSL context first
-            if self.ssl_context:
-                with urllib.request.urlopen(url, context=self.ssl_context) as response:
-                    with open(destination, 'wb') as out_file:
-                        out_file.write(response.read())
-            else:
-                urllib.request.urlretrieve(url, destination)
-        except Exception as e:
-            # Fallback: try using curl command
-            print(f"  urllib failed, trying curl...")
-            result = subprocess.run(['curl', '-L', '-k', '-o', str(destination), url], 
-                                  capture_output=True, timeout=300)
-            if result.returncode != 0:
-                raise Exception(f"Download failed with curl: {result.stderr.decode()}")
+        """Download file handling SSL issues and verifying the download."""
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    print(f"    Retry {attempt}/{max_retries}...")
+                
+                # Remove existing file if any
+                if destination.exists():
+                    destination.unlink()
+                
+                # Try with curl (most reliable for these URLs)
+                result = subprocess.run(
+                    ['curl', '-L', '-k', '-f', '--retry', '3', '--retry-delay', '2',
+                     '-o', str(destination), url], 
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+                
+                if result.returncode != 0:
+                    print(f"    curl error: {result.stderr}")
+                    if attempt < max_retries - 1:
+                        continue
+                    raise Exception(f"curl failed: {result.stderr}")
+                
+                # Verify file exists and has content
+                if not destination.exists():
+                    raise Exception("Downloaded file does not exist")
+                
+                file_size = destination.stat().st_size
+                if file_size == 0:
+                    raise Exception("Downloaded file is empty")
+                
+                # Verify it's a zip file
+                try:
+                    with zipfile.ZipFile(destination, 'r') as test_zip:
+                        # Just test if we can read the file list
+                        _ = test_zip.namelist()
+                    print(f"    ✓ Downloaded and verified ({file_size:,} bytes)")
+                    return
+                except zipfile.BadZipFile:
+                    print(f"    Downloaded file is not a valid zip ({file_size} bytes)")
+                    if attempt < max_retries - 1:
+                        continue
+                    raise Exception("Downloaded file is not a valid zip file")
+                
+            except subprocess.TimeoutExpired:
+                print(f"    Download timed out")
+                if attempt < max_retries - 1:
+                    continue
+                raise Exception("Download timed out after multiple retries")
+            
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"    Error: {e}")
+                    continue
+                raise
+        
+        raise Exception(f"Failed to download after {max_retries} attempts")
     
     def check_path(self):
         """Check if bin_dir is in PATH and provide instructions if not."""
@@ -251,11 +296,28 @@ class ExternalToolsInstaller:
         zip_path = self.bin_dir / 'gcta.zip'
         print(f"  Downloading from {url}...")
         
-        self.download_file(url, zip_path)
+        try:
+            self.download_file(url, zip_path)
+        except Exception as e:
+            print(f"\n  Download failed: {e}")
+            print(f"\n  You can download manually:")
+            print(f"    curl -L -k -o {zip_path} {url}")
+            raise
         
         print(f"  Extracting...")
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(self.bin_dir)
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                # List contents for debugging
+                contents = zip_ref.namelist()
+                print(f"    Archive contains {len(contents)} files")
+                zip_ref.extractall(self.bin_dir)
+        except zipfile.BadZipFile as e:
+            print(f"  Error: Invalid zip file")
+            print(f"  File size: {zip_path.stat().st_size} bytes")
+            print(f"  Try downloading manually to verify:")
+            print(f"    curl -L -k -o test.zip {url}")
+            print(f"    unzip -t test.zip")
+            raise Exception(f"Invalid zip file: {e}")
         
         # Look for the binary in the extracted directory
         source_binary = self.bin_dir / extract_dir / 'gcta64'
@@ -274,20 +336,21 @@ class ExternalToolsInstaller:
             # Debug: show what was extracted
             print(f"  Debug: Looking for binary in {extract_dir}")
             if (self.bin_dir / extract_dir).exists():
-                print(f"  Contents:")
+                print(f"  Contents of {extract_dir}:")
                 for item in (self.bin_dir / extract_dir).iterdir():
-                    print(f"    - {item.name}")
+                    print(f"    - {item.name} ({'dir' if item.is_dir() else 'file'})")
             else:
                 print(f"  Directory not found: {extract_dir}")
-                print(f"  Available directories:")
+                print(f"  Available directories in {self.bin_dir}:")
                 for item in self.bin_dir.iterdir():
-                    if item.is_dir():
+                    if item.is_dir() and 'gcta' in item.name.lower():
                         print(f"    - {item.name}")
             
             raise Exception(f"GCTA binary not found in extracted directory")
         
         dest_binary = self.bin_dir / 'gcta64'
         
+        print(f"  Moving {source_binary.name} to {dest_binary.name}")
         shutil.move(str(source_binary), str(dest_binary))
         dest_binary.chmod(0o755)
         
