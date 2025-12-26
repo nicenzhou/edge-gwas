@@ -1936,6 +1936,168 @@ Migration Guide (v0.1.0 → v0.1.1)
       pheno_df = attach_pcs_to_phenotype(pheno_df, pca_df, n_pcs=10)
       covariates = ['age', 'sex'] + get_pc_covariate_list(10)
 
+Index of All Functions
+----------------------
+
+**Alphabetical listing:**
+
+* ``additive_gwas()`` - Standard additive GWAS
+* ``apply_alpha()`` - Apply EDGE encoding to test data
+* ``attach_pcs_to_phenotype()`` - Merge PCs with phenotype
+* ``calculate_alpha()`` - Calculate EDGE encoding parameters
+* ``calculate_genomic_inflation()`` - Calculate lambda GC
+* ``calculate_grm_gcta()`` - Calculate GRM with GCTA
+* ``calculate_hwe_pvalues()`` - Calculate HWE p-values
+* ``calculate_pca_pcair()`` - PC-AiR for related samples
+* ``calculate_pca_plink()`` - PCA using PLINK2
+* ``calculate_pca_sklearn()`` - Basic PCA with scikit-learn
+* ``check_case_control_balance()`` - Check case/control ratio
+* ``create_summary_report()`` - Generate text summary
+* ``cross_validated_edge_analysis()`` - K-fold cross-validation
+* ``filter_related_samples()`` - Remove related samples
+* ``filter_samples_by_call_rate()`` - Filter by sample call rate
+* ``filter_variants_by_hwe()`` - Filter by HWE p-value
+* ``filter_variants_by_maf()`` - Filter by minor allele frequency
+* ``filter_variants_by_missing()`` - Filter by missingness
+* ``get_pc_covariate_list()`` - Generate PC covariate names
+* ``get_skipped_snps()`` - Get list of failed variants
+* ``identify_related_samples()`` - Find related pairs
+* ``load_alpha_values()`` - Load pre-calculated alphas
+* ``load_bgen_data()`` - Load BGEN format
+* ``load_grm_gcta()`` - Load GRM from GCTA files
+* ``load_pgen_data()`` - Load PLINK2 PGEN format
+* ``load_plink_data()`` - Load PLINK binary format
+* ``load_vcf_data()`` - Load VCF/VCF.GZ format
+* ``manhattan_plot()`` - Create Manhattan plot
+* ``merge_alpha_with_gwas()`` - Merge alpha and GWAS results
+* ``plot_alpha_distribution()`` - Plot alpha distribution
+* ``prepare_phenotype_data()`` - Load and prepare phenotypes
+* ``qq_plot()`` - Create QQ plot
+* ``run_full_analysis()`` - Complete two-stage EDGE workflow
+* ``save_results()`` - Save GWAS and alpha results
+* ``stratified_train_test_split()`` - Train/test split with stratification
+
+**By Category:**
+
+*Core Analysis:*
+
+* ``EDGEAnalysis`` (class)
+
+  * ``calculate_alpha()``
+  * ``apply_alpha()``
+  * ``run_full_analysis()``
+  * ``get_skipped_snps()``
+
+*Data Loading:*
+
+* ``load_plink_data()``
+* ``load_pgen_data()`` (NEW in v0.1.1)
+* ``load_bgen_data()`` (NEW in v0.1.1)
+* ``load_vcf_data()`` (NEW in v0.1.1)
+* ``prepare_phenotype_data()``
+
+*Population Structure (NEW in v0.1.1):*
+
+* ``calculate_grm_gcta()``
+* ``load_grm_gcta()``
+* ``identify_related_samples()``
+* ``filter_related_samples()``
+* ``calculate_pca_plink()``
+* ``calculate_pca_pcair()``
+* ``calculate_pca_sklearn()``
+* ``attach_pcs_to_phenotype()``
+* ``get_pc_covariate_list()``
+
+*Quality Control:*
+
+* ``filter_variants_by_maf()``
+* ``filter_variants_by_missing()``
+* ``filter_variants_by_hwe()`` (NEW in v0.1.1)
+* ``filter_samples_by_call_rate()`` (NEW in v0.1.1)
+* ``check_case_control_balance()`` (NEW in v0.1.1)
+* ``calculate_hwe_pvalues()`` (NEW in v0.1.1)
+
+*Statistical Functions:*
+
+* ``calculate_genomic_inflation()``
+* ``merge_alpha_with_gwas()``
+* ``additive_gwas()`` (NEW in v0.1.1)
+* ``cross_validated_edge_analysis()`` (NEW in v0.1.1)
+
+*Data Processing:*
+
+* ``stratified_train_test_split()``
+
+*Visualization:*
+
+* ``manhattan_plot()``
+* ``qq_plot()``
+* ``plot_alpha_distribution()``
+
+*I/O:*
+
+* ``save_results()``
+* ``load_alpha_values()``
+* ``create_summary_report()``
+
+**Command-Line Tools (NEW in v0.1.1):**
+
+* ``edge-gwas-install-tools`` - Install external tools
+* ``edge-gwas-check-tools`` - Verify tool installation
+
+Quick Function Finder
+----------------------
+
+**"I want to..."**
+
+* **Load genetic data**:
+
+  * PLINK binary (.bed/.bim/.fam): ``load_plink_data()``
+  * PLINK2 (.pgen/.pvar/.psam): ``load_pgen_data()``
+  * BGEN: ``load_bgen_data()``
+  * VCF: ``load_vcf_data()``
+
+* **Control for population structure**:
+
+  * Calculate GRM: ``calculate_grm_gcta()``
+  * Load GRM: ``load_grm_gcta()``
+  * Calculate PCs (unrelated): ``calculate_pca_plink()``
+  * Calculate PCs (related): ``calculate_pca_pcair()``
+  * Add PCs to phenotype: ``attach_pcs_to_phenotype()``
+
+* **Quality control**:
+
+  * Filter by MAF: ``filter_variants_by_maf()``
+  * Filter by missingness: ``filter_variants_by_missing()``
+  * Filter by HWE: ``filter_variants_by_hwe()``
+  * Filter samples: ``filter_samples_by_call_rate()``
+  * Check case/control balance: ``check_case_control_balance()``
+  * Find related samples: ``identify_related_samples()``
+  * Remove related samples: ``filter_related_samples()``
+
+* **Run EDGE analysis**:
+
+  * Calculate alpha: ``calculate_alpha()``
+  * Apply alpha: ``apply_alpha()``
+  * Full workflow: ``run_full_analysis()``
+  * Cross-validation: ``cross_validated_edge_analysis()``
+
+* **Compare with standard GWAS**:
+
+  * Run additive model: ``additive_gwas()``
+
+* **Visualize results**:
+
+  * Manhattan plot: ``manhattan_plot()``
+  * QQ plot: ``qq_plot()``
+  * Alpha distribution: ``plot_alpha_distribution()``
+
+* **Save/load results**:
+
+  * Save results: ``save_results()``
+  * Load alpha values: ``load_alpha_values()``
+  * Create summary: ``create_summary_report()``
+
 See Also
 --------
 
