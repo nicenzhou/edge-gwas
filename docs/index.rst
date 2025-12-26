@@ -27,23 +27,6 @@ using flexible genetic encoding, rather than assuming additive inheritance.
    `https://github.com/nicenzhou/EDGE <https://github.com/nicenzhou/EDGE>`_.
    Version 0.0.0 is **no longer maintained**; users are encouraged to migrate to v0.1.0+.
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents:
-
-   installation
-   quickstart
-   user_guide
-   api_reference
-   statistical_model
-   examples
-   visualization
-   changelog
-   citation
-   troubleshooting
-   faq
-   futureupdates
-
 Key Features
 ------------
 
@@ -76,9 +59,25 @@ Support
 -------
 
 * **Issues**: `GitHub Issues <https://github.com/nicenzhou/edge-gwas/issues>`_
-* **Discussions**: `GitHub Discussions <https://github.com/nicenzhou/edge-gwas/discussions>`_
 * **Code Questions**: jyzhou@stanford.edu
 * **Research Questions**: molly.hall@pennmedicine.upenn.edu
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Contents:
+
+   installation
+   quickstart
+   user_guide
+   api_reference
+   statistical_model
+   examples
+   visualization
+   changelog
+   citation
+   troubleshooting
+   faq
+   futureupdates
 
 See Also
 --------
