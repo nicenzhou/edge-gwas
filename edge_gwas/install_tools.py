@@ -44,6 +44,7 @@ class ExternalToolsInstaller:
     
     def __init__(self):
         self.system = platform.system()
+        self.machine = platform.machine()  # arm64, x86_64, etc.
         self.home = Path.home()
         self.bin_dir = self.home / '.local' / 'bin'
         self.bin_dir.mkdir(parents=True, exist_ok=True)
@@ -88,10 +89,62 @@ class ExternalToolsInstaller:
                 shell_config = '~/.bashrc'
             
             print(f'\nAdd this line to {shell_config}:')
-            print(f'  export PATH="$HOME/.local/bin:$PATH"')
+            print(f'  export PATH="$$HOME/.local/bin:$$PATH"')
             print('\nThen run:')
             print(f'  source {shell_config}')
             print("!"*70 + "\n")
+    
+    def choose_mac_architecture(self, tool_name):
+        """Let user choose architecture for macOS."""
+        print(f"\nDetected system: macOS ({self.machine})")
+        
+        if tool_name == "PLINK2":
+            print("\nAvailable PLINK2 versions for macOS:")
+            print("  1. ARM64 (M1/M2/M3 Macs - native, recommended for Apple Silicon)")
+            print("  2. AVX2 (Intel Macs with AVX2 support - fastest for Intel)")
+            print("  3. Standard (Intel Macs - compatible with all)")
+            
+            if self.machine == 'arm64':
+                print("\nRecommended: Option 1 (ARM64)")
+                default = '1'
+            else:
+                print("\nRecommended: Option 2 (AVX2) if your Intel Mac supports it, otherwise 3")
+                default = '2'
+            
+            choice = input(f"\nSelect version [1/2/3, default={default}]: ").strip()
+            
+            if not choice:
+                choice = default
+            
+            if choice == '1':
+                return 'arm64', 'https://s3.amazonaws.com/plink2-assets/plink2_mac_arm64_20251205.zip'
+            elif choice == '2':
+                return 'avx2', 'https://s3.amazonaws.com/plink2-assets/plink2_mac_avx2_20251205.zip'
+            else:
+                return 'standard', 'https://s3.amazonaws.com/plink2-assets/plink2_mac_20251205.zip'
+        
+        elif tool_name == "GCTA":
+            print("\nAvailable GCTA versions for macOS:")
+            print("  1. ARM64 (M1/M2/M3 Macs - native, v1.95.0)")
+            print("  2. x86_64 (Intel Macs or Rosetta 2 - stable, v1.94.1)")
+            
+            if self.machine == 'arm64':
+                print("\nRecommended: Option 1 (ARM64) for native performance")
+                print("Note: Option 2 also works on Apple Silicon via Rosetta 2")
+                default = '1'
+            else:
+                print("\nRecommended: Option 2 (x86_64)")
+                default = '2'
+            
+            choice = input(f"\nSelect version [1/2, default={default}]: ").strip()
+            
+            if not choice:
+                choice = default
+            
+            if choice == '1':
+                return 'arm64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-macOS-arm64.zip', 'gcta-1.95.0-macOS-arm64'
+            else:
+                return 'x86_64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-MacOS-x86_64.zip', 'gcta-1.94.1-MacOS-x86_64'
     
     def install_all(self):
         """Install all external tools."""
@@ -99,6 +152,7 @@ class ExternalToolsInstaller:
         print("Installing external tools for EDGE-GWAS...")
         print("="*70)
         print(f"\nSystem: {self.system}")
+        print(f"Architecture: {self.machine}")
         print(f"Installation directory: {self.bin_dir}\n")
         
         success_count = 0
@@ -146,8 +200,10 @@ class ExternalToolsInstaller:
         
         if self.system == 'Linux':
             url = 'https://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20251205.zip'
+            arch_type = 'linux'
         elif self.system == 'Darwin':  # macOS
-            url = 'https://s3.amazonaws.com/plink2-assets/plink2_mac_20251205.zip'
+            arch_type, url = self.choose_mac_architecture("PLINK2")
+            print(f"  Selected: PLINK2 macOS {arch_type}")
         else:
             print(f"  PLINK2 auto-installation not supported on {self.system}")
             raise Exception(f"Unsupported OS: {self.system}")
@@ -170,7 +226,8 @@ class ExternalToolsInstaller:
             result = subprocess.run([str(binary_path), '--version'], 
                                   capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
-                print(f"  ✓ PLINK2 installed successfully at {binary_path}")
+                version_info = result.stdout.strip().split('\n')[0]
+                print(f"  ✓ PLINK2 installed successfully: {version_info}")
             else:
                 print(f"  ⚠ PLINK2 installed but verification failed")
         except Exception as e:
@@ -178,15 +235,15 @@ class ExternalToolsInstaller:
     
     def install_gcta(self):
         """Install GCTA."""
-        print("Installing GCTA...")
+        print("\nInstalling GCTA...")
         
         if self.system == 'Linux':
             url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip'
             extract_dir = 'gcta-1.94.1-linux-kernel-3-x86_64'
+            arch_type = 'linux'
         elif self.system == 'Darwin':  # macOS
-            # Use stable x86_64 version for macOS (works on both Intel and Apple Silicon via Rosetta)
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-MacOS-x86_64.zip'
-            extract_dir = 'gcta-1.94.1-MacOS-x86_64'
+            arch_type, url, extract_dir = self.choose_mac_architecture("GCTA")
+            print(f"  Selected: GCTA macOS {arch_type}")
         else:
             print(f"  GCTA auto-installation not supported on {self.system}")
             raise Exception(f"Unsupported OS: {self.system}")
@@ -202,7 +259,16 @@ class ExternalToolsInstaller:
         
         # Look for the binary in the extracted directory
         source_binary = self.bin_dir / extract_dir / 'gcta64'
-        dest_binary = self.bin_dir / 'gcta64'
+        
+        # For ARM64 version, binary might be named differently
+        if not source_binary.exists():
+            # Try alternative names
+            possible_names = ['gcta', 'gcta-1.95.0', 'gcta_1.95.0']
+            for name in possible_names:
+                alt_binary = self.bin_dir / extract_dir / name
+                if alt_binary.exists():
+                    source_binary = alt_binary
+                    break
         
         if not source_binary.exists():
             # Debug: show what was extracted
@@ -211,8 +277,16 @@ class ExternalToolsInstaller:
                 print(f"  Contents:")
                 for item in (self.bin_dir / extract_dir).iterdir():
                     print(f"    - {item.name}")
+            else:
+                print(f"  Directory not found: {extract_dir}")
+                print(f"  Available directories:")
+                for item in self.bin_dir.iterdir():
+                    if item.is_dir():
+                        print(f"    - {item.name}")
             
-            raise Exception(f"GCTA binary not found at expected location: {source_binary}")
+            raise Exception(f"GCTA binary not found in extracted directory")
+        
+        dest_binary = self.bin_dir / 'gcta64'
         
         shutil.move(str(source_binary), str(dest_binary))
         dest_binary.chmod(0o755)
@@ -226,7 +300,8 @@ class ExternalToolsInstaller:
             result = subprocess.run([str(dest_binary), '--version'], 
                                   capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
-                print(f"  ✓ GCTA installed successfully at {dest_binary}")
+                version_info = result.stdout.strip().split('\n')[0]
+                print(f"  ✓ GCTA installed successfully: {version_info}")
             else:
                 print(f"  ⚠ GCTA installed but verification failed")
         except Exception as e:
@@ -234,7 +309,7 @@ class ExternalToolsInstaller:
     
     def install_r_packages(self):
         """Install R packages for PC-AiR."""
-        print("Installing R packages for PC-AiR...")
+        print("\nInstalling R packages for PC-AiR...")
         
         # Check if R is installed
         try:
