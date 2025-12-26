@@ -420,39 +420,58 @@ def stratified_train_test_split(
     """
     Split data into training and test sets with stratification.
     
+    Splits genotype and phenotype data into training and test sets while maintaining
+    the same samples across both datasets. Supports stratification for binary outcomes
+    and allows flexible specification of sample ID columns.
+    
     Args:
-        genotype_df: Genotype DataFrame
-        phenotype_df: Phenotype DataFrame
+        genotype_df: Genotype DataFrame with samples as rows and variants as columns
+        phenotype_df: Phenotype DataFrame with samples as rows
         outcome_col: Name of outcome column for stratification
-        test_size: Proportion of data for test set
-        random_state: Random seed for reproducibility
-        is_binary: Whether outcome is binary (for stratification)
-        geno_id_col: Column/index name for sample IDs in genotype_df 
-                     (default: None, uses index)
-        pheno_id_col: Column/index name for sample IDs in phenotype_df
-                      (default: None, uses index)
+        test_size: Proportion of data for test set (default: 0.5)
+        random_state: Random seed for reproducibility (default: 42)
+        is_binary: Whether outcome is binary for stratification (default: True)
+        geno_id_col: Column or index name for sample IDs in genotype_df.
+                     If None, uses the DataFrame index (default: None)
+        pheno_id_col: Column or index name for sample IDs in phenotype_df.
+                      If None, uses the DataFrame index (default: None)
         
     Returns:
-        Tuple of (train_geno, test_geno, train_pheno, test_pheno)
+        Tuple of (train_geno, test_geno, train_pheno, test_pheno):
+            - train_geno: Training set genotype DataFrame
+            - test_geno: Test set genotype DataFrame  
+            - train_pheno: Training set phenotype DataFrame
+            - test_pheno: Test set phenotype DataFrame
+            
+    Raises:
+        ValueError: If no common samples found between genotype and phenotype data
+        ValueError: If specified ID columns not found in DataFrames
         
     Examples:
-        >>> # Using default indices
+        >>> # Basic usage with index-based matching
         >>> train_g, test_g, train_p, test_p = stratified_train_test_split(
         ...     geno, pheno, 'disease', test_size=0.3
         ... )
         
-        >>> # Using specific columns
+        >>> # Using specific columns for sample IDs
         >>> train_g, test_g, train_p, test_p = stratified_train_test_split(
         ...     geno, pheno, 'disease',
         ...     geno_id_col='sample_id',
-        ...     pheno_id_col='IID'
+        ...     pheno_id_col='IID',
+        ...     test_size=0.5
         ... )
         
-        >>> # Genotype uses index, phenotype uses column
+        >>> # Set phenotype index first (recommended approach)
+        >>> pheno_indexed = pheno.set_index('IID')
         >>> train_g, test_g, train_p, test_p = stratified_train_test_split(
-        ...     geno, pheno, 'disease',
-        ...     geno_id_col=None,
-        ...     pheno_id_col='participant_id'
+        ...     geno, pheno_indexed, 'disease'
+        ... )
+        
+        >>> # Quantitative outcome (no stratification)
+        >>> train_g, test_g, train_p, test_p = stratified_train_test_split(
+        ...     geno, pheno, 'height',
+        ...     is_binary=False,
+        ...     test_size=0.2
         ... )
     """
     logger.info(f"Splitting data into train/test ({1-test_size:.0%}/{test_size:.0%})")
@@ -469,9 +488,9 @@ def stratified_train_test_split(
         logger.debug(f"Using genotype index (name='{geno_id_col}') for sample IDs")
     else:
         raise ValueError(
-            f"Column '{geno_id_col}' not found in genotype DataFrame. "
+            f"Sample ID column '{geno_id_col}' not found in genotype DataFrame. "
             f"Available columns: {genotype_df.columns.tolist()}, "
-            f"Index name: {genotype_df.index.name}"
+            f"Index name: '{genotype_df.index.name}'"
         )
     
     # Get sample identifiers from phenotype DataFrame
@@ -486,58 +505,67 @@ def stratified_train_test_split(
         logger.debug(f"Using phenotype index (name='{pheno_id_col}') for sample IDs")
     else:
         raise ValueError(
-            f"Column '{pheno_id_col}' not found in phenotype DataFrame. "
+            f"Sample ID column '{pheno_id_col}' not found in phenotype DataFrame. "
             f"Available columns: {phenotype_df.columns.tolist()}, "
-            f"Index name: {phenotype_df.index.name}"
+            f"Index name: '{phenotype_df.index.name}'"
         )
     
-    # Get common samples
+    # Find common samples
     common_samples = pd.Index(geno_samples).intersection(pd.Index(pheno_samples))
     
     if len(common_samples) == 0:
         raise ValueError(
             f"No common samples found between genotype and phenotype data.\n"
-            f"Genotype samples (n={len(geno_samples)}): {list(geno_samples[:5])}...\n"
-            f"Phenotype samples (n={len(pheno_samples)}): {list(pheno_samples[:5])}...\n"
-            f"Check if geno_id_col='{geno_id_col}' and pheno_id_col='{pheno_id_col}' "
-            f"are correctly specified."
+            f"Genotype has {len(geno_samples)} samples: {list(geno_samples[:5])}...\n"
+            f"Phenotype has {len(pheno_samples)} samples: {list(pheno_samples[:5])}...\n"
+            f"Hint: Use pheno.set_index('IID') to set sample IDs as index, or specify "
+            f"geno_id_col and pheno_id_col parameters."
         )
     
-    logger.info(f"Found {len(common_samples)} common samples out of "
-                f"{len(geno_samples)} genotype and {len(pheno_samples)} phenotype samples")
+    n_dropped_geno = len(geno_samples) - len(common_samples)
+    n_dropped_pheno = len(pheno_samples) - len(common_samples)
     
-    # Subset to common samples
+    logger.info(
+        f"Found {len(common_samples)} common samples "
+        f"(dropped {n_dropped_geno} from genotype, {n_dropped_pheno} from phenotype)"
+    )
+    
+    # Subset to common samples and align
     if geno_id_col is None or genotype_df.index.name == geno_id_col:
         genotype_df_subset = genotype_df.loc[common_samples]
     else:
         genotype_df_subset = genotype_df[genotype_df[geno_id_col].isin(common_samples)].copy()
         genotype_df_subset = genotype_df_subset.set_index(geno_id_col)
+        genotype_df_subset = genotype_df_subset.loc[common_samples]
     
     if pheno_id_col is None or phenotype_df.index.name == pheno_id_col:
         phenotype_df_subset = phenotype_df.loc[common_samples]
     else:
         phenotype_df_subset = phenotype_df[phenotype_df[pheno_id_col].isin(common_samples)].copy()
         phenotype_df_subset = phenotype_df_subset.set_index(pheno_id_col)
+        phenotype_df_subset = phenotype_df_subset.loc[common_samples]
     
-    # Ensure indices are aligned
-    genotype_df_subset = genotype_df_subset.loc[common_samples]
-    phenotype_df_subset = phenotype_df_subset.loc[common_samples]
-    
-    # Stratify if binary outcome
+    # Prepare stratification
     if is_binary:
         stratify = phenotype_df_subset[outcome_col]
-        # Check if we have enough samples in each class for stratification
+        
+        # Validate stratification is possible
         value_counts = stratify.value_counts()
-        if any(value_counts < 2):
+        if len(value_counts) < 2:
             logger.warning(
-                f"Some classes have fewer than 2 samples. "
-                f"Class distribution: {value_counts.to_dict()}. "
+                f"Outcome has only {len(value_counts)} unique value(s). "
+                f"Disabling stratification."
+            )
+            stratify = None
+        elif any(value_counts < 2):
+            logger.warning(
+                f"Some outcome classes have fewer than 2 samples: {value_counts.to_dict()}. "
                 f"Stratification may fail."
             )
     else:
         stratify = None
     
-    # Split samples
+    # Perform train-test split
     try:
         train_idx, test_idx = train_test_split(
             common_samples,
@@ -548,7 +576,8 @@ def stratified_train_test_split(
     except ValueError as e:
         if stratify is not None:
             logger.warning(
-                f"Stratification failed: {e}. Falling back to random split without stratification."
+                f"Stratification failed: {e}. "
+                f"Falling back to random split without stratification."
             )
             train_idx, test_idx = train_test_split(
                 common_samples,
@@ -568,11 +597,23 @@ def stratified_train_test_split(
     logger.info(f"Training set: {len(train_idx)} samples")
     logger.info(f"Test set: {len(test_idx)} samples")
     
+    # Log class distribution for binary outcomes
     if is_binary and stratify is not None:
-        train_cases = train_pheno[outcome_col].sum()
-        test_cases = test_pheno[outcome_col].sum()
-        logger.info(f"Training cases/controls: {int(train_cases)}/{len(train_idx)-int(train_cases)}")
-        logger.info(f"Test cases/controls: {int(test_cases)}/{len(test_idx)-int(test_cases)}")
+        train_outcome = train_pheno[outcome_col]
+        test_outcome = test_pheno[outcome_col]
+        
+        # Handle both binary (0/1) and case/control (1/2) encoding
+        train_cases = int(train_outcome.sum())
+        test_cases = int(test_outcome.sum())
+        
+        logger.info(
+            f"Training cases/controls: {train_cases}/{len(train_idx)-train_cases} "
+            f"({train_cases/len(train_idx):.1%} cases)"
+        )
+        logger.info(
+            f"Test cases/controls: {test_cases}/{len(test_idx)-test_cases} "
+            f"({test_cases/len(test_idx):.1%} cases)"
+        )
     
     return train_geno, test_geno, train_pheno, test_pheno
 
