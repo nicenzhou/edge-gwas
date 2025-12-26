@@ -193,21 +193,103 @@ def create_summary_report(
     
     return report
 
-def download_test_files():
-    """Download test files from GitHub repository"""
-    os.makedirs('tests', exist_ok=True)
+def download_test_files(
+    output_dir: str = 'tests',
+    version: str = 'v0.1.1',
+    overwrite: bool = False,
+    verbose: bool = True
+) -> dict:
+    """
+    Download test files from GitHub repository.
     
-    base_url = "https://raw.githubusercontent.com/nicenzhou/edge-gwas/v0.1.1/tests/"
+    Args:
+        output_dir: Directory to save test files (default: 'tests')
+        version: GitHub release version tag (default: 'v0.1.1')
+        overwrite: If True, overwrite existing files (default: False)
+        verbose: Print download progress (default: True)
+    
+    Returns:
+        Dictionary with download results:
+        {
+            'downloaded': List of successfully downloaded files,
+            'skipped': List of skipped (already existing) files,
+            'failed': List of failed downloads
+        }
+    
+    Examples:
+        >>> from edge_gwas.io_handler import download_test_files
+        >>> results = download_test_files()
+        >>> print(f"Downloaded {len(results['downloaded'])} files")
+        
+        >>> # Force re-download
+        >>> download_test_files(overwrite=True)
+        
+        >>> # Download to custom directory
+        >>> download_test_files(output_dir='my_data/tests')
+    """
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+    
+    if verbose:
+        logger.info(f"Downloading test files to {output_dir}")
+        print(f"Downloading test files to: {output_dir}")
+    
+    # Base URL for raw files
+    base_url = f"https://raw.githubusercontent.com/nicenzhou/edge-gwas/{version}/tests/"
     files = ['test.bed', 'test.bim', 'test.fam', 'test.phen']
     
+    results = {
+        'downloaded': [],
+        'skipped': [],
+        'failed': []
+    }
+    
     for filename in files:
-        filepath = f'tests/{filename}'
-        if os.path.exists(filepath):
-            print(f"✓ Already exists: {filename}")
-        else:
-            try:
-                url = base_url + filename
-                urllib.request.urlretrieve(url, filepath)
-                print(f"✓ Downloaded: {filename}")
-            except Exception as e:
-                print(f"✗ Error downloading {filename}: {e}")
+        filepath = os.path.join(output_dir, filename)
+        
+        # Check if file exists
+        if os.path.exists(filepath) and not overwrite:
+            if verbose:
+                print(f"✓ Already exists: {filename}")
+            logger.debug(f"Skipped existing file: {filepath}")
+            results['skipped'].append(filename)
+            continue
+        
+        # Download file
+        try:
+            url = base_url + filename
+            
+            if verbose:
+                print(f"⬇ Downloading: {filename}...", end=' ')
+            
+            urllib.request.urlretrieve(url, filepath)
+            
+            # Verify download
+            if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                if verbose:
+                    size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                    print(f"✓ ({size_mb:.2f} MB)")
+                logger.info(f"Downloaded {filename} from {url}")
+                results['downloaded'].append(filename)
+            else:
+                raise ValueError("Downloaded file is empty or doesn't exist")
+                
+        except Exception as e:
+            if verbose:
+                print(f"✗ Error: {e}")
+            logger.error(f"Failed to download {filename}: {e}")
+            results['failed'].append(filename)
+    
+    # Print summary
+    if verbose:
+        print(f"\n{'='*50}")
+        print(f"Summary:")
+        print(f"  ✓ Downloaded: {len(results['downloaded'])}")
+        print(f"  ⊙ Skipped: {len(results['skipped'])}")
+        print(f"  ✗ Failed: {len(results['failed'])}")
+        print(f"{'='*50}")
+    
+    if results['failed']:
+        logger.warning(f"Failed to download: {', '.join(results['failed'])}")
+    
+    return results
