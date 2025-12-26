@@ -17,7 +17,8 @@ EDGEAnalysis Class
    
    edge = EDGEAnalysis(
        outcome_type='binary',           # 'binary' or 'continuous'
-       outcome_transform=None,          # NEW in v0.1.1: Transformation for continuous outcomes
+       outcome_transform=None,          # Transformation for continuous outcomes
+       ols_method='bfgs',              # NEW in v0.1.1: Optimization method for OLS
        n_jobs=-1,                       # Number of parallel jobs
        max_iter=1000,                   # Max iterations for convergence
        verbose=True                     # Print progress
@@ -38,6 +39,67 @@ EDGEAnalysis Class
   * ``'inverse_normal'``: Inverse normal transformation (parametric)
   * ``'rank_inverse_normal'``: Rank-based inverse normal transformation (robust to outliers)
 
+* ``ols_method`` (str, optional): **NEW in v0.1.1** - Optimization method for OLS regression (continuous outcomes only)
+
+  * ``'bfgs'``: Broyden-Fletcher-Goldfarb-Shannon algorithm (default)
+    
+    - Best for: General purpose, balanced speed and accuracy
+    - Convergence: Fast, uses approximate Hessian
+    - Memory: Moderate (O(p²) where p = number of parameters)
+    - Recommended: Most analyses
+
+  * ``'newton'``: Newton-Raphson algorithm
+    
+    - Best for: High precision requirements
+    - Convergence: Very fast when close to optimum (quadratic)
+    - Memory: High (requires exact Hessian computation)
+    - Recommended: Small datasets, need high accuracy
+
+  * ``'lbfgs'``: Limited-memory BFGS
+    
+    - Best for: Large datasets (N > 100,000)
+    - Convergence: Slightly slower than BFGS
+    - Memory: Low (O(mp) where m ≈ 10)
+    - Recommended: Biobank-scale data, memory-constrained systems
+
+  * ``'nm'``: Nelder-Mead simplex algorithm
+    
+    - Best for: Robustness, convergence issues with gradient methods
+    - Convergence: Slow, derivative-free
+    - Memory: Low
+    - Recommended: Troubleshooting convergence failures
+
+  * ``'cg'``: Conjugate Gradient
+    
+    - Best for: Sparse problems, many covariates
+    - Convergence: Moderate
+    - Memory: Low
+    - Recommended: Large covariate sets
+
+  * ``'ncg'``: Newton Conjugate Gradient
+    
+    - Best for: Large-scale problems with >100 covariates
+    - Convergence: Good, uses Hessian-vector products
+    - Memory: Moderate
+    - Recommended: High-dimensional analyses
+
+  * ``'powell'``: Powell's conjugate direction method
+    
+    - Best for: Derivative-free optimization
+    - Convergence: Slow, robust
+    - Memory: Low
+    - Recommended: Non-smooth objective functions (rare in GWAS)
+
+  * ``'basinhopping'``: Basin-hopping global optimization
+    
+    - Best for: Multiple local minima (very rare in GWAS)
+    - Convergence: Very slow, explores parameter space thoroughly
+    - Memory: Moderate
+    - Recommended: Only when suspecting multiple solutions
+
+  **Note:** Optimization method only affects continuous outcomes with linear regression. 
+  Binary outcomes always use BFGS for logistic regression.
+
 * ``n_jobs`` (int): Number of CPU cores for parallel processing
 
   * ``-1``: Use all available cores
@@ -45,6 +107,11 @@ EDGEAnalysis Class
   * ``n``: Use n cores
 
 * ``max_iter`` (int): Maximum iterations for model convergence
+
+  * Default: 1000 (usually sufficient for BFGS, Newton)
+  * Increase to 2000-5000 for Nelder-Mead or if convergence warnings occur
+  * Reduce to 500 if most variants converge quickly
+
 * ``verbose`` (bool): Print progress messages
 
 Methods
@@ -2323,13 +2390,21 @@ Quick Function Finder
 See Also
 --------
 
-* :ref:`quickstart` - Quick start guide
-* :ref:`tutorials` - In-depth tutorials including GRM and PCA
-* :ref:`examples` - Example workflows
-* :ref:`statistical_model` - Statistical methodology
-* :ref:`user_guide` - Detailed user guide
-* :ref:`changelog` - Version history and changes
+**Documentation:**
 
+* :ref:`index` - Index page of the documentation
+* :ref:`installation` - Installation instructions and requirements
+* :ref:`quickstart` - Getting started guide with simple examples
+* :ref:`user_guide` - Comprehensive user guide and tutorials
+* :ref:`api_reference` - Complete API documentation
+* :ref:`examples` - Example analyses and case studies
+* :ref:`visualization` - Plotting and visualization guide
+* :ref:`statistical_model` - Statistical methods and mathematical background
+* :ref:`troubleshooting` - Troubleshooting guide and common issues
+* :ref:`faq` - Frequently asked questions
+* :ref:`citation` - How to cite EDGE in publications
+* :ref:`changelog` - Version history and release notes
+* :ref:`futureupdates` - Planned features and roadmap
 
 ---
 
