@@ -139,7 +139,7 @@ def main():
         print("\nTo install missing tools, run:")
         print("  edge-gwas-install-tools")
         print("\nOr install manually following the guide at:")
-        print("  https://github.com/nicenzhou/edge-gwas/blob/main/INSTALL.md")
+        print("  https://github.com/nicenzhou/edge-gwas/INSTALL.md")
     
     print("="*70 + "\n")
     
