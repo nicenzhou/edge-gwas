@@ -3,260 +3,215 @@
 User Guide
 ==========
 
-This comprehensive guide covers all aspects of using edge-gwas v0.1.1.
+This guide covers essential aspects of using edge-gwas v0.1.1.
 
 Overview
 --------
 
-edge-gwas is designed for researchers performing large-scale GWAS analysis with flexible genetic encoding to identify nonadditive SNP effects.
+edge-gwas performs GWAS analysis with flexible genetic encoding to detect nonadditive SNP effects.
 
 **Key Features:**
 
 * Two-stage analysis framework (training/test split)
-* Flexible alpha encoding for nonadditive effects detection
-* Support for multiple genotype file formats
-* Comprehensive quality control tools
-* Built-in visualization functions
-* Parallel processing for large datasets
-
-Core Concepts
--------------
+* Flexible encoding for nonadditive effects detection
+* Population structure control (PCA, GRM)
+* Multiple file format support (PLINK, PGEN, BGEN, VCF)
+* Outcome transformations for continuous traits
+* Built-in visualization and QC tools
 
 EDGE Methodology
-~~~~~~~~~~~~~~~~
+----------------
 
-**EDGE (Elastic Data-Driven Encoding)** identifies genetic variants with nonadditive effects by:
+**EDGE (Efficient Detection of Genetic Effects)** uses a two-stage approach:
 
-1. **Training Stage**: Calculate flexible encoding parameters (alpha) from training data
-2. **Test Stage**: Apply alpha values to test data for association testing
+1. **Training**: Calculate encoding parameters (α) for each variant
+2. **Testing**: Apply α values to perform GWAS
 
-This approach detects:
+**Alpha (α) Interpretation:**
 
-* Recessive effects (α ≈ 0)
-* Additive effects (α ≈ 0.5)
-* Dominant effects (α ≈ 1)
-* Over-dominant effects (α > 1)
-* Under-recessive effects (α < 0)
+* **α ≈ 0**: Recessive (only homozygotes affected)
+* **α ≈ 0.5**: Additive (heterozygotes intermediate)
+* **α ≈ 1**: Dominant (heterozygotes = homozygotes)
 
-See :ref:`statistical_model` for detailed mathematical framework.
+This flexible encoding detects effects that standard additive models miss.
 
-Two-Stage Analysis
-~~~~~~~~~~~~~~~~~~
+Complete Workflow
+-----------------
 
-**Why split data?**
-
-The two-stage approach prevents overfitting and provides unbiased estimates:
-
-1. **Training set**: Estimate alpha (encoding parameter) for each variant
-2. **Test set**: Perform GWAS using pre-calculated alpha values
-
-Recommended split: **50/50** for balanced power and bias control.
-
-Data Formats
-------------
-
-Supported Input Formats
-~~~~~~~~~~~~~~~~~~~~~~~
-
-edge-gwas v0.1.1 supports all major genotype file formats:
-
-**Genotype Data:**
-
-* **PLINK (.bed/.bim/.fam)** - Standard PLINK binary format
-* **PLINK 2 (.pgen/.pvar/.psam)** - New PLINK 2 format with better compression
-* **BGEN (.bgen)** - UK Biobank format with genotype dosages
-* **VCF (.vcf/.vcf.gz)** - Variant Call Format (compressed or uncompressed)
-
-**Phenotype Data:**
-
-* **TXT/TSV/CSV** - Tab/comma-delimited text files
-* Required columns: Sample ID, outcome, covariates
-
-See :ref:`examples` for format specifications and loading examples.
-
-Output Formats
-~~~~~~~~~~~~~~
-
-**Association Results:**
-
-* **TXT/TSV** - Tab-delimited association results
-* **CSV** - Comma-delimited results for Excel
-
-**Visualization:**
-
-* **PNG** - High-resolution plots (300 DPI)
-* **PDF** - Vector graphics for publications
-* **SVG** - Scalable vector graphics
-
-**Alpha Values:**
-
-* **TXT/TSV** - Encoding parameters for each variant
-
-Workflow Components
--------------------
-
-1. Data Loading
-~~~~~~~~~~~~~~~
-
-Load and prepare genomic and phenotype data:
+1. Load Data
+~~~~~~~~~~~~
 
 .. code-block:: python
 
    from edge_gwas.utils import load_plink_data, prepare_phenotype_data
    
-   # Load genotypes (choose format)
+   # Load genotypes (multiple formats supported)
    geno, info = load_plink_data('data.bed', 'data.bim', 'data.fam')
-   # OR
-   geno, info = load_pgen_data('data.pgen', 'data.pvar', 'data.psam')
-   # OR
-   geno, info = load_bgen_data('data.bgen', 'data.sample')
-   # OR
-   geno, info = load_vcf_data('data.vcf.gz', dosage=True)
    
    # Load phenotypes
    pheno = prepare_phenotype_data(
-       'phenotypes.txt',
+       'pheno.txt',
        outcome_col='disease',
-       covariate_cols=['age', 'sex', 'PC1', 'PC2', 'PC3']
+       covariate_cols=['age', 'sex']
    )
-
-**Best Practice:** Use binary formats (PLINK, PLINK 2, BGEN) for large datasets.
 
 2. Quality Control
 ~~~~~~~~~~~~~~~~~~
-
-Filter variants and samples based on standard QC criteria:
 
 .. code-block:: python
 
    from edge_gwas.utils import (
        filter_variants_by_maf,
-       filter_variants_by_missing,
        filter_variants_by_hwe,
-       filter_samples_by_call_rate,
-       check_case_control_balance
+       filter_samples_by_call_rate
    )
    
-   # Variant QC
+   # Apply QC filters
    geno = filter_variants_by_maf(geno, min_maf=0.01)
-   geno = filter_variants_by_missing(geno, max_missing=0.05)
    geno = filter_variants_by_hwe(geno, hwe_threshold=1e-6)
-   
-   # Sample QC
    geno, pheno = filter_samples_by_call_rate(geno, pheno, min_call_rate=0.95)
-   
-   # Check case/control balance (for binary outcomes)
-   balance = check_case_control_balance(pheno, 'disease')
 
 **Recommended Thresholds:**
 
-* MAF > 0.01 (1%)
+* MAF > 1%
 * Missingness < 5%
-* HWE p-value > 1e-6 (in controls)
+* HWE p > 1e-6
 * Sample call rate > 95%
 
-3. Data Splitting
-~~~~~~~~~~~~~~~~~
+3. Population Structure Control (NEW in v0.1.1)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Split data into training and test sets:
+**Option A: PCA (for unrelated samples):**
+
+.. code-block:: python
+
+   from edge_gwas.utils import calculate_pca_plink, attach_pcs_to_phenotype
+   
+   pca_df = calculate_pca_plink('data', n_pcs=10)
+   pheno = attach_pcs_to_phenotype(pheno, pca_df, n_pcs=10)
+
+**Option B: GRM (for related samples):**
+
+.. code-block:: python
+
+   from edge_gwas.utils import calculate_grm_gcta, load_grm_gcta
+   
+   grm_prefix = calculate_grm_gcta('data')
+   grm_matrix, grm_ids = load_grm_gcta(grm_prefix)
+
+4. Split Data
+~~~~~~~~~~~~~
 
 .. code-block:: python
 
    from edge_gwas.utils import stratified_train_test_split
    
    train_g, test_g, train_p, test_p = stratified_train_test_split(
-       geno, pheno,
-       outcome_col='disease',
-       test_size=0.5,
-       random_state=42,
-       is_binary=True  # Stratify for balanced case/control
+       geno, pheno, 'disease', test_size=0.5, random_state=42
    )
 
-**Important:** Use stratification for binary outcomes to maintain case/control balance.
+5. Run EDGE Analysis
+~~~~~~~~~~~~~~~~~~~~
 
-4. EDGE Analysis
-~~~~~~~~~~~~~~~~
-
-Run the two-stage EDGE analysis:
+**Basic Analysis:**
 
 .. code-block:: python
 
    from edge_gwas import EDGEAnalysis
+   from edge_gwas.utils import get_pc_covariate_list
    
-   # Initialize
-   edge = EDGEAnalysis(
-       outcome_type='binary',  # or 'continuous'
-       n_jobs=8,               # parallel processing
-       verbose=True
-   )
+   edge = EDGEAnalysis(outcome_type='binary', n_jobs=-1)
    
-   # Run complete analysis
+   covariates = ['age', 'sex'] + get_pc_covariate_list(10)
+   
    alpha_df, gwas_df = edge.run_full_analysis(
        train_g, train_p, test_g, test_p,
        outcome='disease',
-       covariates=['age', 'sex', 'PC1', 'PC2', 'PC3'],
-       output_prefix='my_analysis'
+       covariates=covariates
    )
 
-**Alternative (Two-Step):**
+**With GRM (NEW in v0.1.1):**
 
 .. code-block:: python
 
-   # Step 1: Calculate alpha on training data
-   alpha_df = edge.calculate_alpha(train_g, train_p, 'disease', covariates)
-   
-   # Step 2: Apply alpha on test data
-   gwas_df = edge.apply_alpha(test_g, test_p, 'disease', covariates, alpha_df)
+   alpha_df, gwas_df = edge.run_full_analysis(
+       train_g, train_p, test_g, test_p,
+       outcome='disease',
+       covariates=covariates,
+       grm_matrix=grm_matrix,
+       grm_sample_ids=grm_ids
+   )
 
-5. Results Interpretation
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Interpret GWAS results and alpha values:
-
-.. code-block:: python
-
-   # Significant associations
-   sig_hits = gwas_df[gwas_df['pval'] < 5e-8]
-   print(f"Significant variants: {len(sig_hits)}")
-   
-   # Check alpha distribution
-   print(f"Mean alpha: {alpha_df['alpha_value'].mean():.3f}")
-   
-   # Categorize by inheritance pattern
-   recessive = alpha_df[alpha_df['alpha_value'] < 0.3]
-   additive = alpha_df[(alpha_df['alpha_value'] >= 0.3) & (alpha_df['alpha_value'] < 0.7)]
-   dominant = alpha_df[alpha_df['alpha_value'] >= 0.7]
-   
-   print(f"Recessive: {len(recessive)}")
-   print(f"Additive: {len(additive)}")
-   print(f"Dominant: {len(dominant)}")
-
-**Interpretation Guide:**
-
-* **p-value < 5×10⁻⁸**: Genome-wide significant
-* **p-value < 1×10⁻⁵**: Suggestive
-* **α ≈ 0**: Recessive inheritance
-* **α ≈ 0.5**: Additive inheritance
-* **α ≈ 1**: Dominant inheritance
-
-6. Visualization
-~~~~~~~~~~~~~~~~
-
-Create publication-quality plots:
+**Continuous Outcomes with Transformation (NEW in v0.1.1):**
 
 .. code-block:: python
 
-   from edge_gwas.visualize import manhattan_plot, qq_plot, plot_alpha_distribution
+   edge = EDGEAnalysis(
+       outcome_type='continuous',
+       outcome_transform='rank_inverse_normal'
+   )
    
-   # Manhattan plot
-   manhattan_plot(gwas_df, 'manhattan.png', title='EDGE GWAS Results')
+   alpha_df, gwas_df = edge.run_full_analysis(...)
+
+6. Interpret Results
+~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   # Significant hits
+   sig = gwas_df[gwas_df['pval'] < 5e-8]
+   print(f"Significant variants: {len(sig)}")
    
-   # QQ plot with lambda
-   lambda_gc = qq_plot(gwas_df, 'qq_plot.png')
-   print(f"Genomic inflation: {lambda_gc:.3f}")
+   # Check genomic inflation
+   from edge_gwas.utils import calculate_genomic_inflation
+   lambda_gc = calculate_genomic_inflation(gwas_df['pval'])
+   print(f"Lambda GC: {lambda_gc:.3f}")  # Should be 0.95-1.05
    
    # Alpha distribution
-   plot_alpha_distribution(alpha_df, 'alpha_dist.png')
+   print(f"Mean alpha: {alpha_df['alpha_value'].mean():.3f}")
+
+**Significance Thresholds:**
+
+* **p < 5×10⁻⁸**: Genome-wide significant
+* **p < 1×10⁻⁵**: Suggestive
+* **λ = 0.95-1.05**: Good control for population structure
+
+7. Visualize
+~~~~~~~~~~~~
+
+.. code-block:: python
+
+   from edge_gwas.visualize import manhattan_plot, qq_plot
+   
+   manhattan_plot(gwas_df, 'manhattan.png')
+   lambda_gc = qq_plot(gwas_df, 'qq.png')
+
+File Formats
+------------
+
+**Supported Genotype Formats:**
+
+* **PLINK**: ``.bed/.bim/.fam`` → ``load_plink_data()``
+* **PLINK2**: ``.pgen/.pvar/.psam`` → ``load_pgen_data()``
+* **BGEN**: ``.bgen`` → ``load_bgen_data()``
+* **VCF**: ``.vcf/.vcf.gz`` → ``load_vcf_data()``
+
+**Phenotype Format:**
+
+Tab-delimited text with columns:
+
+* Sample ID (IID)
+* Outcome variable
+* Covariates
+
+Example:
+
+.. code-block:: text
+
+   IID       disease  age  sex
+   SAMPLE1   1        45   0
+   SAMPLE2   0        38   1
+   SAMPLE3   1        52   0
 
 Best Practices
 --------------
@@ -264,173 +219,104 @@ Best Practices
 Quality Control
 ~~~~~~~~~~~~~~~
 
-**Pre-Analysis QC:**
+1. **Variant QC**: MAF > 0.01, missingness < 5%, HWE p > 1e-6
+2. **Sample QC**: Call rate > 95%, check for relatedness
+3. **Population Structure**: Always include ≥10 PCs as covariates
+4. **Genomic Inflation**: λ should be 0.95-1.05
 
-1. Filter variants with MAF < 0.01
-2. Remove variants with missingness > 5%
-3. Test Hardy-Weinberg Equilibrium in controls (p > 1e-6)
-4. Remove samples with call rate < 95%
-5. Check for batch effects and population stratification
+Covariates
+~~~~~~~~~~
 
-**During Analysis:**
+**Always include:**
 
-6. Include at least 10 principal components as covariates
-7. Monitor convergence warnings
-8. Check for skipped SNPs due to convergence issues
+* Age, sex, genotyping batch
+* 10-20 principal components
 
-**Post-Analysis QC:**
+**For biobank data:**
 
-9. Calculate genomic inflation factor (λ should be 0.95-1.05)
-10. Verify case/control balance in split datasets
-11. Check for systematic bias in QQ plots
+* Study center, assessment date
+* 20+ PCs if diverse ancestry
 
-Statistical Analysis
-~~~~~~~~~~~~~~~~~~~~
+Data Splitting
+~~~~~~~~~~~~~~
 
-**Covariates:**
+* **50/50 split** recommended for balanced power
+* **Stratify** binary outcomes to maintain case/control balance
+* **Same random seed** for reproducibility
 
-1. **Always include**: Age, sex, principal components (PC1-PC10)
-2. **Consider**: Genotyping batch, study site, other technical factors
-3. **Avoid**: Post-treatment variables, mediators
+Performance
+~~~~~~~~~~~
 
-**Multiple Testing:**
+* **Parallel processing**: Set ``n_jobs=-1`` to use all cores
+* **Large datasets**: Process chromosomes separately
+* **Memory**: Use binary formats (PLINK, PGEN, BGEN)
 
-4. Use genome-wide significance threshold: **p < 5×10⁻⁸**
-5. Report suggestive threshold: **p < 1×10⁻⁵**
-6. Consider Bonferroni correction for hypothesis testing
-7. Use FDR for exploratory analysis
-
-**Validation:**
-
-8. Replicate findings in independent cohorts
-9. Validate top hits with different methods (e.g., additive GWAS)
-10. Compare EDGE results with standard additive models
-11. Perform functional validation for biological plausibility
-
-Performance Optimization
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Data Handling:**
-
-1. Use binary file formats (PLINK, PLINK 2, BGEN) for faster I/O
-2. Filter data before splitting to reduce memory usage
-3. Process chromosomes separately for very large datasets
-4. Use chunking for extremely large cohorts
-
-**Computational Efficiency:**
-
-5. Utilize parallel processing: set ``n_jobs=-1`` to use all cores
-6. Increase ``max_iter`` if convergence warnings appear
-7. Monitor memory usage and adjust batch sizes
-8. Use HPC/cloud computing for genome-wide analyses
-
-**Memory Management:**
-
-.. code-block:: python
-
-   # Process chromosomes in batches
-   for chrom in range(1, 23):
-       geno, info = load_plink_data(f'chr{chrom}.bed', f'chr{chrom}.bim', f'chr{chrom}.fam')
-       # ... process ...
-       del geno, info  # Free memory
-
-Advanced Topics
----------------
+Advanced Features (v0.1.1)
+--------------------------
 
 Cross-Validation
 ~~~~~~~~~~~~~~~~
-
-Assess alpha stability across folds:
 
 .. code-block:: python
 
    from edge_gwas.utils import cross_validated_edge_analysis
    
    avg_alpha, meta_gwas, all_alpha, all_gwas = cross_validated_edge_analysis(
-       geno, pheno,
-       outcome='disease',
-       covariates=['age', 'sex', 'PC1', 'PC2'],
-       outcome_type='binary',
-       n_folds=5
+       geno, pheno, 'disease', covariates,
+       outcome_type='binary', n_folds=5
    )
-   
-   # Check alpha stability
-   unstable = avg_alpha[avg_alpha['alpha_std'] > 0.3]
-   print(f"Unstable variants: {len(unstable)}")
 
-Comparison with Additive GWAS
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Compare EDGE with standard additive models:
+Compare with Additive GWAS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
    from edge_gwas.utils import additive_gwas
    
-   # Run standard additive GWAS
-   additive_results = additive_gwas(
-       test_g, test_p,
-       outcome='disease',
-       covariates=['age', 'sex'],
-       outcome_type='binary'
-   )
+   add_results = additive_gwas(test_g, test_p, 'disease', covariates, 'binary')
    
-   # Compare results
-   merged = gwas_df.merge(additive_results, on='variant_id', suffixes=('_edge', '_add'))
-   merged['edge_advantage'] = -np.log10(merged['pval_edge']) - (-np.log10(merged['pval_add']))
-   
-   # Find variants where EDGE performs better
-   edge_better = merged[merged['edge_advantage'] > 2]  # 100-fold improvement
+   # Compare p-values
+   comparison = gwas_df.merge(add_results, on='variant_id', suffixes=('_edge', '_add'))
 
-Population Stratification
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Population Structure Options
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Control for population structure:
+.. list-table::
+   :header-rows: 1
+   :widths: 20 30 50
 
-.. code-block:: python
+   * - Scenario
+     - Method
+     - Command
+   * - Unrelated samples
+     - Standard PCA
+     - ``calculate_pca_plink()``
+   * - Related samples
+     - PC-AiR
+     - ``calculate_pca_pcair()``
+   * - Biobank data
+     - GRM + PC-AiR
+     - ``calculate_grm_gcta()`` + ``calculate_pca_pcair()``
 
-   # Include first 10 PCs as covariates
-   covariates = ['age', 'sex'] + [f'PC{i}' for i in range(1, 11)]
-   
-   # Check genomic inflation
-   lambda_gc = calculate_genomic_inflation(gwas_df['pval'])
-   
-   # If λ > 1.05, consider adding more PCs or using mixed models
+Outcome Transformations
+~~~~~~~~~~~~~~~~~~~~~~~
 
-Meta-Analysis
-~~~~~~~~~~~~~
+For non-normal continuous traits:
 
-Combine results from multiple studies:
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
 
-.. code-block:: python
-
-   from scipy.stats import combine_pvalues
-   
-   # Combine p-values from multiple cohorts using Fisher's method
-   cohort1_pvals = gwas_cohort1['pval']
-   cohort2_pvals = gwas_cohort2['pval']
-   
-   _, combined_pval = combine_pvalues([cohort1_pvals, cohort2_pvals], method='fisher')
-
-Rare Variant Analysis
-~~~~~~~~~~~~~~~~~~~~~
-
-Special considerations for rare variants (MAF < 1%):
-
-* Use lower MAF threshold (e.g., 0.001)
-* Increase sample size requirements
-* Consider gene-based or region-based tests
-* Validate with sequencing data
-
-Gene-Based Analysis
-~~~~~~~~~~~~~~~~~~~
-
-Aggregate signals within genes (future feature):
-
-.. code-block:: python
-
-   # Planned for v0.2.0
-   # gene_results = edge.gene_based_test(gwas_df, gene_annotations)
+   * - Transformation
+     - When to Use
+   * - ``'log'``
+     - Right-skewed data (e.g., gene expression)
+   * - ``'log10'``
+     - Right-skewed with large range
+   * - ``'inverse_normal'``
+     - Parametric normalization
+   * - ``'rank_inverse_normal'``
+     - Robust to outliers (recommended)
 
 Troubleshooting
 ---------------
@@ -438,78 +324,69 @@ Troubleshooting
 Common Issues
 ~~~~~~~~~~~~~
 
-**Memory errors**
-
-* Reduce batch size or process chromosomes separately
-* Filter more aggressively (increase MAF threshold)
-* Use lower-memory file formats
-* Close unused variables with ``del``
-
-**Slow performance**
-
-* Enable parallel processing: ``n_jobs=-1``
-* Use binary file formats (PLINK, PLINK 2)
-* Filter data before analysis
-* Use HPC or cloud resources
-
-**Convergence warnings**
-
-* Increase ``max_iter`` parameter
-* Check for multicollinearity in covariates
-* Verify data quality (no constant variants)
-* Use ``get_skipped_snps()`` to identify problematic variants
-
-**Missing values**
-
-* Check data preprocessing
-* Verify sample ID matching between genotype and phenotype
-* Use ``dropna()`` or imputation before analysis
-
 **High genomic inflation (λ > 1.05)**
 
-* Add more principal components (PC1-PC20)
-* Check for population stratification
-* Verify case/control balance
-* Look for batch effects or technical artifacts
-
-Error Messages
-~~~~~~~~~~~~~~
+* Add more PCs (try 15-20 instead of 10)
+* Use GRM for related samples
+* Check for batch effects
 
 **"No common samples found"**
 
-* Check sample ID formatting (IID column in phenotype file)
-* Verify sample IDs match between genotype and phenotype files
-* Ensure index is set correctly on both DataFrames
+* Ensure all IDs are strings: ``df.index = df.index.astype(str)``
+* Check ID column names match
 
-**"Model fitting failed"**
+**Memory errors**
 
-* Check for variants with no variation (all same genotype)
-* Verify sufficient sample size
-* Check for perfect separation in binary outcomes
-* Review covariate values for extreme outliers
+* Process chromosomes separately
+* Reduce ``n_jobs``
+* Use sparse GRM: ``method='grm-sparse'``
 
-**"Alpha value is NaN"**
+**Convergence warnings**
 
-* Homozygous coefficient too close to zero
-* Insufficient sample size for that variant
-* Convergence failure - increase ``max_iter``
+* Increase ``max_iter``
+* Check for rare variants (filter MAF > 0.05)
+* View skipped SNPs: ``edge.get_skipped_snps()``
 
-Getting Help
-------------
+Quick Reference
+---------------
 
-Resources
-~~~~~~~~~
+**Import commonly used functions:**
 
-* **Documentation**: https://edge-gwas.readthedocs.io/
-* **API Reference**: :ref:`api_reference`
-* **Examples**: :ref:`examples`
-* **Statistical Model**: :ref:`statistical_model`
-* **Installation**: :ref:`installation`
+.. code-block:: python
 
-Support Channels
-~~~~~~~~~~~~~~~~
+   from edge_gwas import EDGEAnalysis
+   from edge_gwas.utils import (
+       load_plink_data, prepare_phenotype_data,
+       filter_variants_by_maf, filter_variants_by_hwe,
+       calculate_pca_plink, attach_pcs_to_phenotype,
+       get_pc_covariate_list, stratified_train_test_split,
+       calculate_grm_gcta, load_grm_gcta
+   )
+   from edge_gwas.visualize import manhattan_plot, qq_plot
 
-* **GitHub Issues**: https://github.com/nicenzhou/edge-gwas/issues
-* **GitHub Discussions**: https://github.com/nicenzhou/edge-gwas/discussions
-* **Code Questions**: jyzhou@stanford.edu
-* **Research Questions**: molly.hall@pennmedicine.upenn.edu
+**Typical workflow:**
+
+.. code-block:: python
+
+   # 1. Load → 2. QC → 3. PCA → 4. Split → 5. EDGE → 6. Visualize
+   geno, info = load_plink_data(...)
+   geno = filter_variants_by_maf(geno, 0.01)
+   pca_df = calculate_pca_plink('data', 10)
+   train_g, test_g, train_p, test_p = stratified_train_test_split(...)
+   alpha_df, gwas_df = edge.run_full_analysis(...)
+   manhattan_plot(gwas_df, 'results.png')
+
+See Also
+--------
+
+* :ref:`quickstart` - Get started in 5 minutes
+* :ref:`examples` - Complete example workflows
+* :ref:`api_reference` - Detailed API documentation
+* :ref:`statistical_model` - Mathematical framework
+* :ref:`changelog` - What's new in v0.1.1
+
+---
+
+*Last updated: 2025-12-25 for edge-gwas v0.1.1*
+
+*For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues
