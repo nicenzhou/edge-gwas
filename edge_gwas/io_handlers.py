@@ -192,3 +192,22 @@ def create_summary_report(
         logger.info(f"Summary report saved to {output_file}")
     
     return report
+
+def download_test_files():
+    """Download test files from GitHub repository"""
+    os.makedirs('tests', exist_ok=True)
+    
+    base_url = "https://raw.githubusercontent.com/nicenzhou/edge-gwas/v0.1.1/tests/"
+    files = ['test.bed', 'test.bim', 'test.fam', 'test.phen']
+    
+    for filename in files:
+        filepath = f'tests/{filename}'
+        if os.path.exists(filepath):
+            print(f"✓ Already exists: {filename}")
+        else:
+            try:
+                url = base_url + filename
+                urllib.request.urlretrieve(url, filepath)
+                print(f"✓ Downloaded: {filename}")
+            except Exception as e:
+                print(f"✗ Error downloading {filename}: {e}")
