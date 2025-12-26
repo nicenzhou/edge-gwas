@@ -238,10 +238,21 @@ Version History Summary
 See Also
 --------
 
-* :ref:`installation` - Installation instructions
-* :ref:`quickstart` - Getting started guide
-* GitHub Releases - https://github.com/nicenzhou/edge-gwas/releases
-* Issue Tracker - https://github.com/nicenzhou/edge-gwas/issues
+**Documentation:**
+
+* :ref:`index` - Index page of the documentation
+* :ref:`installation` - Installation instructions and requirements
+* :ref:`quickstart` - Getting started guide with simple examples
+* :ref:`user_guide` - Comprehensive user guide and tutorials
+* :ref:`api_reference` - Complete API documentation
+* :ref:`examples` - Example analyses and case studies
+* :ref:`visualization` - Plotting and visualization guide
+* :ref:`statistical_model` - Statistical methods and mathematical background
+* :ref:`troubleshooting` - Troubleshooting guide and common issues
+* :ref:`faq` - Frequently asked questions
+* :ref:`citation` - How to cite EDGE in publications
+* :ref:`changelog` - Version history and release notes
+* :ref:`futureupdates` - Planned features and roadmap
 
 ---
 
