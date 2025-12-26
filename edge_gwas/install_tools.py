@@ -110,10 +110,7 @@ class ExternalToolsInstaller:
             success_count += 1
         except Exception as e:
             print(f"\nWarning: PLINK2 installation failed: {e}")
-            print("You can install manually:")
-            print("  cd ~/.local/bin")
-            print("  curl -L -o plink2.zip https://s3.amazonaws.com/plink2-assets/alpha5/plink2_mac_latest.zip")
-            print("  unzip plink2.zip && chmod +x plink2 && rm plink2.zip\n")
+            print("You can install manually from: https://www.cog-genomics.org/plink/2.0/\n")
         
         # Install GCTA
         try:
@@ -121,15 +118,7 @@ class ExternalToolsInstaller:
             success_count += 1
         except Exception as e:
             print(f"\nWarning: GCTA installation failed: {e}")
-            print("You can install manually:")
-            print("  cd ~/.local/bin")
-            if self.system == 'Darwin':
-                print("  curl -L -k -o gcta.zip https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-MacOS-x86_64.zip")
-                print("  unzip gcta.zip && mv gcta-1.94.1-MacOS-x86_64/gcta64 ./ && chmod +x gcta64")
-            else:
-                print("  curl -L -k -o gcta.zip https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip")
-                print("  unzip gcta.zip && mv gcta-1.94.1-linux-kernel-3-x86_64/gcta64 ./ && chmod +x gcta64")
-            print("  rm -rf gcta* && rm gcta.zip\n")
+            print("You can install manually from: https://yanglab.westlake.edu.cn/software/gcta/\n")
         
         # Install R packages
         try:
@@ -156,9 +145,9 @@ class ExternalToolsInstaller:
         print("Installing PLINK2...")
         
         if self.system == 'Linux':
-            url = 'https://s3.amazonaws.com/plink2-assets/alpha5/plink2_linux_x86_64_latest.zip'
+            url = 'https://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20251205.zip'
         elif self.system == 'Darwin':  # macOS
-            url = 'https://s3.amazonaws.com/plink2-assets/alpha5/plink2_mac_latest.zip'
+            url = 'https://s3.amazonaws.com/plink2-assets/plink2_mac_20251205.zip'
         else:
             print(f"  PLINK2 auto-installation not supported on {self.system}")
             raise Exception(f"Unsupported OS: {self.system}")
@@ -192,11 +181,11 @@ class ExternalToolsInstaller:
         print("Installing GCTA...")
         
         if self.system == 'Linux':
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip'
-            extract_dir = 'gcta-1.94.1-linux-kernel-3-x86_64'
+            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-linux-kernel-3-x86_64.zip'
+            extract_dir = 'gcta-1.95.0-linux-kernel-3-x86_64'
         elif self.system == 'Darwin':  # macOS
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-MacOS-x86_64.zip'
-            extract_dir = 'gcta-1.94.1-MacOS-x86_64'
+            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-macOS-arm64.zip'
+            extract_dir = 'gcta-1.95.0-macOS-arm64'
         else:
             print(f"  GCTA auto-installation not supported on {self.system}")
             raise Exception(f"Unsupported OS: {self.system}")
@@ -210,11 +199,15 @@ class ExternalToolsInstaller:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(self.bin_dir)
         
+        # Try both gcta64 and gcta (newer versions might use different names)
         source_binary = self.bin_dir / extract_dir / 'gcta64'
+        if not source_binary.exists():
+            source_binary = self.bin_dir / extract_dir / 'gcta'
+        
         dest_binary = self.bin_dir / 'gcta64'
         
         if not source_binary.exists():
-            raise Exception(f"GCTA binary not found after extraction: {source_binary}")
+            raise Exception(f"GCTA binary not found after extraction in {extract_dir}")
         
         shutil.move(str(source_binary), str(dest_binary))
         dest_binary.chmod(0o755)
