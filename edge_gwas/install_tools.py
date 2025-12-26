@@ -282,20 +282,22 @@ class ExternalToolsInstaller:
         print("\nInstalling GCTA...")
         
         if self.system == 'Linux':
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip'
-            extract_dir = 'gcta-1.94.1-linux-kernel-3-x86_64'
+            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-linux-kernel-3-x86_64.zip'
+            extract_dir = 'gcta-1.95.0-linux-kernel-3-x86_64'
             arch_type = 'linux'
+            binary_name = 'gcta'  # Linux version uses 'gcta'
         elif self.system == 'Darwin':  # macOS
             arch_type, url, extract_dir = self.choose_mac_architecture("GCTA")
+            binary_name = 'gcta64'  # macOS versions use 'gcta64'
             print(f"  Selected: GCTA macOS {arch_type}")
         else:
             print(f"  GCTA auto-installation not supported on {self.system}")
             raise Exception(f"Unsupported OS: {self.system}")
         
         # Install the selected version
-        self._install_gcta_version(url, extract_dir, arch_type)
+        self._install_gcta_version(url, extract_dir, arch_type, binary_name)
     
-    def _install_gcta_version(self, url, extract_dir, arch_type):
+    def _install_gcta_version(self, url, extract_dir, arch_type, binary_name):
         """Install a specific GCTA version."""
         zip_path = self.bin_dir / 'gcta.zip'
         print(f"  Downloading from {url}...")
@@ -322,13 +324,14 @@ class ExternalToolsInstaller:
         # Look for the binary in the extracted directory
         # Try multiple possible binary locations and names
         possible_binaries = [
+            # Linux version (v1.95.0) has gcta in root
+            self.bin_dir / extract_dir / 'gcta',
             # ARM64 version has bin/gcta64
             self.bin_dir / extract_dir / 'bin' / 'gcta64',
             # Root directory locations
             self.bin_dir / extract_dir / 'gcta64',
             self.bin_dir / extract_dir / 'gcta-1.94.1',  # macOS x86_64
             self.bin_dir / extract_dir / 'gcta-1.95.0',
-            self.bin_dir / extract_dir / 'gcta',
             self.bin_dir / extract_dir / 'gcta_1.94.1',
             self.bin_dir / extract_dir / 'gcta_1.95.0',
         ]
@@ -343,8 +346,7 @@ class ExternalToolsInstaller:
                         header = f.read(4)
                         # Check for ELF magic number (Linux) or Mach-O (macOS)
                         # Mach-O: \xfe\xed\xfa\xce (32-bit), \xfe\xed\xfa\xcf (64-bit)
-                        # Mach-O (reverse): \xce\xfa\xed\xfe, \xcf\xfa\xed\xfe
-                        # ELF: \x7fELF
+                         # ELF: \x7fELF
                         if header[:4] in [b'\x7fELF', b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', 
                                          b'\xfe\xed\xfa\xce', b'\xfe\xed\xfa\xcf']:
                             source_binary = candidate
@@ -383,6 +385,8 @@ class ExternalToolsInstaller:
             shutil.rmtree(self.bin_dir / extract_dir, ignore_errors=True)
             raise Exception(f"GCTA binary not found in extracted directory")
         
+        # Determine destination binary name based on system
+        # Use 'gcta64' for all systems to maintain consistency with previous behavior
         dest_binary = self.bin_dir / 'gcta64'
         
         print(f"  Moving {source_binary.name} to {dest_binary.name}")
