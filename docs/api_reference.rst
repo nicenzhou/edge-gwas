@@ -2108,3 +2108,9 @@ See Also
 * :ref:`user_guide` - Detailed user guide
 * :ref:`changelog` - Version history and changes
 
+
+---
+
+*Last updated: 2025-12-25 for edge-gwas v0.1.1*
+
+*For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues
