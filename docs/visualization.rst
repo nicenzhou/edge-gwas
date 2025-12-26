@@ -858,3 +858,9 @@ See Also
 * :ref:`examples` - Example workflows with visualizations
 * :ref:`api_reference` - Visualization function documentation
 * :ref:`user_guide` - General usage guide
+
+---
+
+*Last updated: 2025-12-25 for edge-gwas v0.1.1*
+
+*For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues
