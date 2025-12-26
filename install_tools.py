@@ -125,11 +125,11 @@ class ExternalToolsInstaller:
         print("Installing PLINK2...")
         
         if self.system == 'Linux':
-            url = 'https://s3.amazonaws.com/plink2-assets/alpha5/plink2_linux_x86_64_latest.zip'
+            url = 'https://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20251205.zip'
             archive_name = 'plink2_linux.zip'
             binary_name = 'plink2'
         elif self.system == 'Darwin':  # macOS
-            url = 'https://s3.amazonaws.com/plink2-assets/alpha5/plink2_mac_latest.zip'
+            url = 'https://s3.amazonaws.com/plink2-assets/plink2_mac_20251205.zip'
             archive_name = 'plink2_mac.zip'
             binary_name = 'plink2'
         else:
@@ -181,12 +181,12 @@ class ExternalToolsInstaller:
         print("Installing GCTA...")
         
         if self.system == 'Linux':
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip'
+            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-linux-kernel-3-x86_64.zip'
             archive_name = 'gcta_linux.zip'
             binary_name = 'gcta64'
             extract_dir = 'gcta-1.94.1-linux-kernel-3-x86_64'
         elif self.system == 'Darwin':  # macOS
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-MacOS-x86_64.zip'
+            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-macOS-arm64.zip'
             archive_name = 'gcta_mac.zip'
             binary_name = 'gcta64'
             extract_dir = 'gcta-1.94.1-MacOS-x86_64'
