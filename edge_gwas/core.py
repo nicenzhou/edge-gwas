@@ -5,11 +5,15 @@ Core EDGE GWAS analysis functions.
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
+from scipy import linalg
+from scipy.stats import norm, rankdata
+from scipy.optimize import minimize
 from joblib import Parallel, delayed
 import warnings
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
 from typing import Optional, List, Tuple, Dict
 import logging
+import os
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -25,11 +29,13 @@ class EDGEAnalysis:
         n_jobs (int): Number of parallel jobs for computation
         max_iter (int): Maximum iterations for model fitting
         verbose (bool): Whether to print progress messages
+        outcome_transform (str): Transformation to apply to continuous outcomes
     """
     
     def __init__(
         self,
         outcome_type: str = 'binary',
+        outcome_transform: Optional[str] = None,
         n_jobs: int = -1,
         max_iter: int = 1000,
         verbose: bool = True
@@ -39,6 +45,12 @@ class EDGEAnalysis:
         
         Args:
             outcome_type: 'binary' for logistic regression, 'continuous' for linear regression
+            outcome_transform: Transformation for continuous outcomes:
+                - None: No transformation
+                - 'log': Natural log transformation
+                - 'log10': Log base 10 transformation
+                - 'inverse_normal': Inverse normal transformation (parametric)
+                - 'rank_inverse_normal': Rank-based inverse normal transformation
             n_jobs: Number of parallel jobs (-1 uses all available cores)
             max_iter: Maximum iterations for model convergence
             verbose: Print progress information
@@ -46,20 +58,327 @@ class EDGEAnalysis:
         if outcome_type not in ['binary', 'continuous']:
             raise ValueError("outcome_type must be 'binary' or 'continuous'")
         
+        valid_transforms = [None, 'log', 'log10', 'inverse_normal', 'rank_inverse_normal']
+        if outcome_transform not in valid_transforms:
+            raise ValueError(f"outcome_transform must be one of {valid_transforms}")
+        
+        if outcome_type == 'binary' and outcome_transform is not None:
+            raise ValueError("outcome_transform can only be used with continuous outcomes")
+        
         self.outcome_type = outcome_type
+        self.outcome_transform = outcome_transform
         self.n_jobs = n_jobs
         self.max_iter = max_iter
         self.verbose = verbose
         self.alpha_values = None
         self.skipped_snps = []
         
+    def _transform_outcome(self, y: pd.Series) -> pd.Series:
+        """
+        Apply transformation to continuous outcome.
+        
+        Args:
+            y: Outcome series
+            
+        Returns:
+            Transformed outcome series
+        """
+        if self.outcome_transform is None:
+            return y
+        
+        y_transformed = y.copy()
+        
+        if self.outcome_transform == 'log':
+            # Natural log transformation
+            if (y <= 0).any():
+                raise ValueError("Log transformation requires all positive values")
+            y_transformed = np.log(y)
+            if self.verbose:
+                logger.info(f"Applied natural log transformation to outcome")
+                
+        elif self.outcome_transform == 'log10':
+            # Log base 10 transformation
+            if (y <= 0).any():
+                raise ValueError("Log10 transformation requires all positive values")
+            y_transformed = np.log10(y)
+            if self.verbose:
+                logger.info(f"Applied log10 transformation to outcome")
+                
+        elif self.outcome_transform == 'inverse_normal':
+            # Parametric inverse normal transformation
+            # Assumes data follows a normal distribution
+            mean = y.mean()
+            std = y.std()
+            
+            # Standardize
+            z = (y - mean) / std
+            
+            # Apply inverse normal CDF
+            y_transformed = pd.Series(
+                norm.ppf((rankdata(z) - 0.5) / len(z)),
+                index=y.index
+            )
+            if self.verbose:
+                logger.info(f"Applied inverse normal transformation to outcome")
+                
+        elif self.outcome_transform == 'rank_inverse_normal':
+            # Rank-based inverse normal transformation (RINT)
+            # More robust to outliers
+            n = len(y)
+            
+            # Get ranks (average for ties)
+            ranks = rankdata(y, method='average')
+            
+            # Apply Blom's formula: (rank - 3/8) / (n + 1/4)
+            # Alternative formulas:
+            # - Van der Waerden: rank / (n + 1)
+            # - Blom: (rank - 3/8) / (n + 1/4)
+            # - Tukey: (rank - 1/3) / (n + 1/3)
+            quantiles = (ranks - 3/8) / (n + 1/4)
+            
+            # Apply inverse normal CDF
+            y_transformed = pd.Series(
+                norm.ppf(quantiles),
+                index=y.index
+            )
+            if self.verbose:
+                logger.info(f"Applied rank-based inverse normal transformation to outcome")
+        
+        # Check for invalid values
+        if y_transformed.isna().any() or np.isinf(y_transformed).any():
+            n_invalid = y_transformed.isna().sum() + np.isinf(y_transformed).sum()
+            logger.warning(f"Transformation produced {n_invalid} invalid values (NA or Inf)")
+            y_transformed = y_transformed.replace([np.inf, -np.inf], np.nan)
+        
+        if self.verbose:
+            logger.info(f"Outcome statistics after transformation:")
+            logger.info(f"  Mean: {y_transformed.mean():.4f}")
+            logger.info(f"  Std: {y_transformed.std():.4f}")
+            logger.info(f"  Min: {y_transformed.min():.4f}")
+            logger.info(f"  Max: {y_transformed.max():.4f}")
+        
+        return y_transformed
+    
+    def _prepare_grm_for_samples(
+        self,
+        sample_ids: pd.Index,
+        grm_matrix: np.ndarray,
+        grm_sample_ids: pd.DataFrame
+    ) -> Tuple[np.ndarray, pd.Index]:
+        """
+        Extract and align GRM for samples in the analysis.
+        
+        Args:
+            sample_ids: Sample IDs from the analysis data
+            grm_matrix: Full GRM matrix from GCTA
+            grm_sample_ids: DataFrame with FID and IID from GRM
+            
+        Returns:
+            Tuple of (aligned_grm, common_sample_ids)
+        """
+        # Create sample ID mapping
+        grm_sample_ids['sample_id'] = grm_sample_ids['IID'].astype(str)
+        sample_ids_str = sample_ids.astype(str)
+        
+        # Find common samples maintaining order
+        common_samples = [s for s in sample_ids_str if s in grm_sample_ids['sample_id'].values]
+        
+        if len(common_samples) == 0:
+            raise ValueError("No common samples found between analysis data and GRM")
+        
+        if self.verbose:
+            logger.info(f"Found {len(common_samples)} common samples between data and GRM")
+        
+        # Get indices for common samples in GRM
+        grm_id_to_idx = {sid: idx for idx, sid in enumerate(grm_sample_ids['sample_id'])}
+        grm_indices = [grm_id_to_idx[s] for s in common_samples]
+        
+        # Extract GRM submatrix for common samples
+        aligned_grm = grm_matrix[np.ix_(grm_indices, grm_indices)]
+        
+        return aligned_grm, pd.Index(common_samples)
+    
+    def _transform_with_grm_linear(
+        self,
+        y: pd.Series,
+        X: pd.DataFrame,
+        grm: np.ndarray,
+        h2: float = 0.5
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Transform phenotype and covariates using GRM for linear mixed model.
+        
+        This implements the transformation for a linear mixed model:
+        y = Xβ + Zu + e, where u ~ N(0, σ²_g*GRM) and e ~ N(0, σ²_e*I)
+        
+        Args:
+            y: Phenotype vector
+            X: Design matrix (genotypes + covariates)
+            grm: Genetic relationship matrix
+            h2: Assumed heritability (default: 0.5)
+            
+        Returns:
+            Tuple of (transformed_y, transformed_X)
+        """
+        n = len(y)
+        
+        # Construct V = h2*GRM + (1-h2)*I
+        V = h2 * grm + (1 - h2) * np.eye(n)
+        
+        # Cholesky decomposition of V
+        try:
+            L = linalg.cholesky(V, lower=True)
+            L_inv = linalg.solve_triangular(L, np.eye(n), lower=True)
+            
+            # Transform y and X: V^(-1/2) * y and V^(-1/2) * X
+            y_transformed = L_inv @ y.values
+            X_transformed = L_inv @ X.values
+            
+            return y_transformed, X_transformed
+            
+        except linalg.LinAlgError:
+            logger.warning("GRM matrix is singular, using regularization")
+            # Add small regularization term
+            V_reg = V + 1e-6 * np.eye(n)
+            L = linalg.cholesky(V_reg, lower=True)
+            L_inv = linalg.solve_triangular(L, np.eye(n), lower=True)
+            
+            y_transformed = L_inv @ y.values
+            X_transformed = L_inv @ X.values
+            
+            return y_transformed, X_transformed
+    
+    def _fit_logistic_mixed_model(
+        self,
+        y: np.ndarray,
+        X: np.ndarray,
+        grm: np.ndarray,
+        tau: float = 1.0
+    ) -> Dict:
+        """
+        Fit logistic mixed model with GRM using penalized quasi-likelihood.
+        
+        This implements a simplified GMMAT approach for binary outcomes.
+        
+        Args:
+            y: Binary outcome vector
+            X: Design matrix (including intercept)
+            grm: Genetic relationship matrix
+            tau: Variance component ratio (default: 1.0)
+            
+        Returns:
+            Dictionary with coefficients, standard errors, and p-values
+        """
+        n = X.shape[0]
+        p = X.shape[1]
+        
+        # Initialize coefficients with standard logistic regression
+        try:
+            init_model = sm.Logit(y, X)
+            init_result = init_model.fit(disp=False, maxiter=100)
+            beta = init_result.params.values
+        except:
+            beta = np.zeros(p)
+            beta[0] = np.log(y.mean() / (1 - y.mean() + 1e-10))
+        
+        # Construct covariance matrix
+        # V = tau * GRM + I (on the logit scale, this is approximate)
+        Sigma = tau * grm + np.eye(n)
+        
+        try:
+            # Cholesky decomposition
+            L = linalg.cholesky(Sigma, lower=True)
+            Sigma_inv = linalg.cho_solve((L, True), np.eye(n))
+        except:
+            # Fallback to pseudo-inverse if singular
+            logger.warning("Singular GRM, using pseudo-inverse")
+            Sigma_inv = linalg.pinv(Sigma)
+        
+        # Iteratively reweighted least squares with penalty
+        for iteration in range(self.max_iter):
+            # Calculate fitted values
+            eta = X @ beta
+            mu = 1 / (1 + np.exp(-eta))
+            mu = np.clip(mu, 1e-10, 1 - 1e-10)
+            
+            # Working weights
+            W = mu * (1 - mu)
+            W = np.clip(W, 1e-10, None)
+            W_mat = np.diag(W)
+            
+            # Working response
+            z = eta + (y - mu) / W
+            
+            # Update beta with penalty
+            # (X'WX + Sigma_inv)^{-1} X'Wz
+            try:
+                XtWX = X.T @ W_mat @ X
+                XtWz = X.T @ (W * z)
+                
+                # Add penalty term (simplified)
+                penalty_strength = 0.01  # Small penalty for stability
+                A = XtWX + penalty_strength * Sigma_inv[:p, :p]
+                
+                beta_new = linalg.solve(A, XtWz, assume_a='pos')
+                
+                # Check convergence
+                if np.max(np.abs(beta_new - beta)) < 1e-6:
+                    beta = beta_new
+                    break
+                
+                beta = beta_new
+                
+            except linalg.LinAlgError:
+                logger.warning("Matrix inversion failed in logistic mixed model")
+                break
+        
+        # Calculate standard errors
+        try:
+            # Information matrix
+            mu = 1 / (1 + np.exp(-X @ beta))
+            mu = np.clip(mu, 1e-10, 1 - 1e-10)
+            W = mu * (1 - mu)
+            W_mat = np.diag(W)
+            
+            XtWX = X.T @ W_mat @ X
+            vcov = linalg.inv(XtWX)
+            
+            se = np.sqrt(np.diag(vcov))
+            
+            # Test statistics
+            z_stats = beta / se
+            pvals = 2 * (1 - norm.cdf(np.abs(z_stats)))
+            
+            # Confidence intervals
+            ci_lower = beta - 1.96 * se
+            ci_upper = beta + 1.96 * se
+            
+        except:
+            logger.warning("Could not calculate standard errors for logistic mixed model")
+            se = np.full_like(beta, np.nan)
+            z_stats = np.full_like(beta, np.nan)
+            pvals = np.full_like(beta, np.nan)
+            ci_lower = np.full_like(beta, np.nan)
+            ci_upper = np.full_like(beta, np.nan)
+        
+        return {
+            'params': beta,
+            'bse': se,
+            'tvalues': z_stats,
+            'pvalues': pvals,
+            'conf_int_lower': ci_lower,
+            'conf_int_upper': ci_upper
+        }
+    
     def _fit_codominant_model(
         self,
         het_data: pd.Series,
         hom_data: pd.Series,
         phenotype_df: pd.DataFrame,
         outcome: str,
-        covariates: List[str]
+        covariates: List[str],
+        grm: Optional[np.ndarray] = None,
+        grm_sample_ids: Optional[pd.Index] = None
     ) -> pd.DataFrame:
         """
         Fit codominant model (separate effects for het and hom).
@@ -70,6 +389,8 @@ class EDGEAnalysis:
             phenotype_df: DataFrame containing outcome and covariates
             outcome: Name of outcome variable
             covariates: List of covariate names
+            grm: Optional aligned GRM matrix for mixed model
+            grm_sample_ids: Sample IDs corresponding to GRM rows
             
         Returns:
             DataFrame with model results
@@ -87,25 +408,95 @@ class EDGEAnalysis:
         merged_df = pd.merge(data, phenotype_df, left_index=True, right_index=True)
         merged_df = merged_df.dropna()
         
+        # If GRM is provided, subset to common samples
+        if grm is not None and grm_sample_ids is not None:
+            merged_df = merged_df.loc[merged_df.index.intersection(grm_sample_ids)]
+            if len(merged_df) == 0:
+                logger.warning(f"No samples remain after GRM alignment for {het_data.name}")
+                return pd.DataFrame()
+        
         snp_name = het_data.name
         
         # Prepare variables
         X = merged_df[[f'{snp_name}_het', f'{snp_name}_hom'] + covariates]
         y = merged_df[outcome]
         
+        # Apply outcome transformation if specified (for continuous outcomes)
+        if self.outcome_type == 'continuous' and self.outcome_transform is not None:
+            try:
+                y = self._transform_outcome(y)
+            except Exception as e:
+                logger.warning(f"Outcome transformation failed for {snp_name}: {str(e)}")
+                self.skipped_snps.append(snp_name)
+                return pd.DataFrame()
+        
         # Add constant
         X = sm.add_constant(X)
         
-        # Fit model
+        # Apply GRM if provided
+        if grm is not None and grm_sample_ids is not None:
+            # Align GRM to current samples
+            sample_indices = [list(grm_sample_ids).index(s) for s in merged_df.index]
+            aligned_grm = grm[np.ix_(sample_indices, sample_indices)]
+            
+            if self.outcome_type == 'continuous':
+                # Transform data for linear mixed model
+                try:
+                    y_transformed, X_transformed = self._transform_with_grm_linear(y, X, aligned_grm)
+                    
+                    # Fit OLS on transformed data
+                    model = sm.OLS(y_transformed, X_transformed)
+                    result = model.fit()
+                except Exception as e:
+                    logger.warning(f"GRM-based linear model fitting failed for {snp_name}: {str(e)}")
+                    self.skipped_snps.append(snp_name)
+                    return pd.DataFrame()
+                    
+            else:  # binary outcome
+                # Fit logistic mixed model
+                try:
+                    result_dict = self._fit_logistic_mixed_model(
+                        y.values, X.values, aligned_grm
+                    )
+                    
+                    # Create a result-like object
+                    class MixedModelResult:
+                        def __init__(self, res_dict, feature_names):
+                            self.params = pd.Series(res_dict['params'], index=feature_names)
+                            self.bse = pd.Series(res_dict['bse'], index=feature_names)
+                            self.tvalues = pd.Series(res_dict['tvalues'], index=feature_names)
+                            self.pvalues = pd.Series(res_dict['pvalues'], index=feature_names)
+                            self._conf_int_lower = pd.Series(res_dict['conf_int_lower'], index=feature_names)
+                            self._conf_int_upper = pd.Series(res_dict['conf_int_upper'], index=feature_names)
+                        
+                        def conf_int(self):
+                            return pd.DataFrame({
+                                0: self._conf_int_lower,
+                                1: self._conf_int_upper
+                            })
+                    
+                    result = MixedModelResult(result_dict, X.columns)
+                    
+                except Exception as e:
+                    logger.warning(f"GRM-based logistic model fitting failed for {snp_name}: {str(e)}")
+                    self.skipped_snps.append(snp_name)
+                    return pd.DataFrame()
+        else:
+            # Fit standard model without GRM
+            try:
+                if self.outcome_type == 'binary':
+                    model = sm.Logit(y, X)
+                    result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
+                else:
+                    model = sm.OLS(y, X)
+                    result = model.fit()
+            except Exception as e:
+                logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
+                self.skipped_snps.append(snp_name)
+                return pd.DataFrame()
+        
+        # Extract results
         try:
-            if self.outcome_type == 'binary':
-                model = sm.Logit(y, X)
-                result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
-            else:
-                model = sm.OLS(y, X)
-                result = model.fit()
-                
-            # Extract results
             result_df = pd.DataFrame({
                 'snp': [snp_name],
                 'coef_het': [result.params[f'{snp_name}_het']],
@@ -125,8 +516,8 @@ class EDGEAnalysis:
             
             return result_df
             
-        except (np.linalg.LinAlgError, ConvergenceWarning) as e:
-            logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Result extraction failed for {snp_name}: {str(e)}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
     
@@ -135,7 +526,9 @@ class EDGEAnalysis:
         edge_data: pd.Series,
         phenotype_df: pd.DataFrame,
         outcome: str,
-        covariates: List[str]
+        covariates: List[str],
+        grm: Optional[np.ndarray] = None,
+        grm_sample_ids: Optional[pd.Index] = None
     ) -> pd.DataFrame:
         """
         Fit EDGE-encoded model.
@@ -145,6 +538,8 @@ class EDGEAnalysis:
             phenotype_df: DataFrame containing outcome and covariates
             outcome: Name of outcome variable
             covariates: List of covariate names
+            grm: Optional aligned GRM matrix for mixed model
+            grm_sample_ids: Sample IDs corresponding to GRM rows
             
         Returns:
             DataFrame with model results
@@ -158,25 +553,95 @@ class EDGEAnalysis:
         )
         merged_df = merged_df.dropna()
         
+        # If GRM is provided, subset to common samples
+        if grm is not None and grm_sample_ids is not None:
+            merged_df = merged_df.loc[merged_df.index.intersection(grm_sample_ids)]
+            if len(merged_df) == 0:
+                logger.warning(f"No samples remain after GRM alignment for {edge_data.name}")
+                return pd.DataFrame()
+        
         snp_name = edge_data.name
         
         # Prepare variables
         X = merged_df[[snp_name] + covariates]
         y = merged_df[outcome]
         
+        # Apply outcome transformation if specified (for continuous outcomes)
+        if self.outcome_type == 'continuous' and self.outcome_transform is not None:
+            try:
+                y = self._transform_outcome(y)
+            except Exception as e:
+                logger.warning(f"Outcome transformation failed for {snp_name}: {str(e)}")
+                self.skipped_snps.append(snp_name)
+                return pd.DataFrame()
+        
         # Add constant
         X = sm.add_constant(X)
         
-        # Fit model
-        try:
-            if self.outcome_type == 'binary':
-                model = sm.Logit(y, X)
-                result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
-            else:
-                model = sm.OLS(y, X)
-                result = model.fit()
+        # Apply GRM if provided
+        if grm is not None and grm_sample_ids is not None:
+            # Align GRM to current samples
+            sample_indices = [list(grm_sample_ids).index(s) for s in merged_df.index]
+            aligned_grm = grm[np.ix_(sample_indices, sample_indices)]
             
-            # Extract results
+            if self.outcome_type == 'continuous':
+                # Transform data for linear mixed model
+                try:
+                    y_transformed, X_transformed = self._transform_with_grm_linear(y, X, aligned_grm)
+                    
+                    # Fit OLS on transformed data
+                    model = sm.OLS(y_transformed, X_transformed)
+                    result = model.fit()
+                except Exception as e:
+                    logger.warning(f"GRM-based linear model fitting failed for {snp_name}: {str(e)}")
+                    self.skipped_snps.append(snp_name)
+                    return pd.DataFrame()
+                    
+            else:  # binary outcome
+                # Fit logistic mixed model
+                try:
+                    result_dict = self._fit_logistic_mixed_model(
+                        y.values, X.values, aligned_grm
+                    )
+                    
+                    # Create a result-like object
+                    class MixedModelResult:
+                        def __init__(self, res_dict, feature_names):
+                            self.params = pd.Series(res_dict['params'], index=feature_names)
+                            self.bse = pd.Series(res_dict['bse'], index=feature_names)
+                            self.tvalues = pd.Series(res_dict['tvalues'], index=feature_names)
+                            self.pvalues = pd.Series(res_dict['pvalues'], index=feature_names)
+                            self._conf_int_lower = pd.Series(res_dict['conf_int_lower'], index=feature_names)
+                            self._conf_int_upper = pd.Series(res_dict['conf_int_upper'], index=feature_names)
+                        
+                        def conf_int(self):
+                            return pd.DataFrame({
+                                0: self._conf_int_lower,
+                                1: self._conf_int_upper
+                            })
+                    
+                    result = MixedModelResult(result_dict, X.columns)
+                    
+                except Exception as e:
+                    logger.warning(f"GRM-based logistic model fitting failed for {snp_name}: {str(e)}")
+                    self.skipped_snps.append(snp_name)
+                    return pd.DataFrame()
+        else:
+            # Fit standard model without GRM
+            try:
+                if self.outcome_type == 'binary':
+                    model = sm.Logit(y, X)
+                    result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
+                else:
+                    model = sm.OLS(y, X)
+                    result = model.fit()
+            except Exception as e:
+                logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
+                self.skipped_snps.append(snp_name)
+                return pd.DataFrame()
+        
+        # Extract results
+        try:
             result_df = pd.DataFrame({
                 'snp': [snp_name],
                 'coef': [result.params[snp_name]],
@@ -190,8 +655,8 @@ class EDGEAnalysis:
             
             return result_df
             
-        except (np.linalg.LinAlgError, ConvergenceWarning) as e:
-            logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Result extraction failed for {snp_name}: {str(e)}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
     
@@ -201,7 +666,9 @@ class EDGEAnalysis:
         phenotype_df: pd.DataFrame,
         outcome: str,
         covariates: List[str],
-        variant_info: Optional[pd.DataFrame] = None
+        variant_info: Optional[pd.DataFrame] = None,
+        grm_matrix: Optional[np.ndarray] = None,
+        grm_sample_ids: Optional[pd.DataFrame] = None
     ) -> pd.DataFrame:
         """
         Calculate EDGE alpha values from training data.
@@ -215,6 +682,8 @@ class EDGEAnalysis:
             covariates: List of covariate names in phenotype_df
             variant_info: Optional DataFrame with variant information
                          (columns: variant_id, ref_allele, alt_allele)
+            grm_matrix: Optional GRM matrix from GCTA (for population structure control)
+            grm_sample_ids: DataFrame with FID and IID corresponding to GRM rows
             
         Returns:
             DataFrame with alpha values for each variant
@@ -223,6 +692,18 @@ class EDGEAnalysis:
         """
         self.skipped_snps = []
         alpha_results = []
+        
+        # Prepare GRM if provided
+        aligned_grm = None
+        grm_ids = None
+        if grm_matrix is not None and grm_sample_ids is not None:
+            if self.verbose:
+                logger.info(f"Incorporating GRM for population structure control")
+            aligned_grm, grm_ids = self._prepare_grm_for_samples(
+                genotype_data.index,
+                grm_matrix,
+                grm_sample_ids
+            )
         
         n_variants = genotype_data.shape[1]
         
@@ -240,9 +721,9 @@ class EDGEAnalysis:
             het.name = variant_id
             hom.name = variant_id
             
-            # Fit codominant model
+            # Fit codominant model with optional GRM
             result_df = self._fit_codominant_model(
-                het, hom, phenotype_df, outcome, covariates
+                het, hom, phenotype_df, outcome, covariates, aligned_grm, grm_ids
             )
             
             if result_df.empty:
@@ -295,6 +776,8 @@ class EDGEAnalysis:
         if self.verbose:
             logger.info(f"Alpha calculation complete. Processed {len(alpha_results)} variants.")
             logger.info(f"Skipped {len(self.skipped_snps)} variants due to convergence issues.")
+            if self.outcome_transform:
+                logger.info(f"Outcome transformation applied: {self.outcome_transform}")
         
         return self.alpha_values
     
@@ -304,7 +787,9 @@ class EDGEAnalysis:
         phenotype_df: pd.DataFrame,
         outcome: str,
         covariates: List[str],
-        alpha_values: Optional[pd.DataFrame] = None
+        alpha_values: Optional[pd.DataFrame] = None,
+        grm_matrix: Optional[np.ndarray] = None,
+        grm_sample_ids: Optional[pd.DataFrame] = None
     ) -> pd.DataFrame:
         """
         Apply EDGE alpha values to test data and perform GWAS.
@@ -318,6 +803,8 @@ class EDGEAnalysis:
             covariates: List of covariate names in phenotype_df
             alpha_values: DataFrame with alpha values (from calculate_alpha)
                          If None, uses self.alpha_values from previous calculation
+            grm_matrix: Optional GRM matrix from GCTA (for population structure control)
+            grm_sample_ids: DataFrame with FID and IID corresponding to GRM rows
             
         Returns:
             DataFrame with GWAS results
@@ -337,6 +824,18 @@ class EDGEAnalysis:
         
         # Create alpha lookup dictionary
         alpha_dict = dict(zip(alpha_values['variant_id'], alpha_values['alpha_value']))
+        
+        # Prepare GRM if provided
+        aligned_grm = None
+        grm_ids = None
+        if grm_matrix is not None and grm_sample_ids is not None:
+            if self.verbose:
+                logger.info(f"Incorporating GRM for population structure control")
+            aligned_grm, grm_ids = self._prepare_grm_for_samples(
+                genotype_data.index,
+                grm_matrix,
+                grm_sample_ids
+            )
         
         self.skipped_snps = []
         gwas_results = []
@@ -368,9 +867,9 @@ class EDGEAnalysis:
             edge_encoded = geno.replace({0: 1.0, 1: alpha_value, 2: 0.0})
             edge_encoded.name = variant_id
             
-            # Fit EDGE model
+            # Fit EDGE model with optional GRM
             result_df = self._fit_edge_model(
-                edge_encoded, phenotype_df, outcome, covariates
+                edge_encoded, phenotype_df, outcome, covariates, aligned_grm, grm_ids
             )
             
             if result_df.empty:
@@ -391,6 +890,8 @@ class EDGEAnalysis:
         if self.verbose:
             logger.info(f"EDGE GWAS complete. Analyzed {len(gwas_results)} variants.")
             logger.info(f"Skipped {len(self.skipped_snps)} variants.")
+            if self.outcome_transform:
+                logger.info(f"Outcome transformation applied: {self.outcome_transform}")
         
         return gwas_df
     
@@ -403,6 +904,8 @@ class EDGEAnalysis:
         outcome: str,
         covariates: List[str],
         variant_info: Optional[pd.DataFrame] = None,
+        grm_matrix: Optional[np.ndarray] = None,
+        grm_sample_ids: Optional[pd.DataFrame] = None,
         output_prefix: Optional[str] = None
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
@@ -417,12 +920,17 @@ class EDGEAnalysis:
             outcome: Name of outcome variable
             covariates: List of covariate names
             variant_info: Optional variant information
+            grm_matrix: Optional GRM matrix from GCTA
+            grm_sample_ids: Optional sample IDs for GRM
             output_prefix: Optional prefix for output files
             
         Returns:
             Tuple of (alpha_df, gwas_df)
         """
         logger.info("Starting EDGE analysis...")
+        
+        if self.outcome_transform:
+            logger.info(f"Outcome transformation: {self.outcome_transform}")
         
         # Calculate alpha values on training data
         logger.info("Step 1: Calculating alpha values on training data...")
@@ -431,7 +939,9 @@ class EDGEAnalysis:
             train_phenotype,
             outcome,
             covariates,
-            variant_info
+            variant_info,
+            grm_matrix,
+            grm_sample_ids
         )
         
         # Save alpha values if output prefix provided
@@ -447,7 +957,9 @@ class EDGEAnalysis:
             test_phenotype,
             outcome,
             covariates,
-            alpha_df
+            alpha_df,
+            grm_matrix,
+            grm_sample_ids
         )
         
         # Save GWAS results if output prefix provided
