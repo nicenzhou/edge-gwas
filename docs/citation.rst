@@ -63,7 +63,7 @@ See Also
 
 * :ref:`changelog` - Version history
 * :ref:`contributing` - How to contribute
-* GitHub repository - https://github.com/YOUR-USERNAME/edge-gwas
+* GitHub repository - https://github.com/nicenzhou/edge-gwas
 
 
 ---
