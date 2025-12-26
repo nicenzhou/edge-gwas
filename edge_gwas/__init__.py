@@ -34,8 +34,8 @@ from .utils import (
     filter_related_samples,
 )
 
-# Import visualization functions
-from .visualization import (
+# Import visualize functions
+from .visualize import (
     manhattan_plot,
     qq_plot,
     plot_alpha_distribution,
