@@ -120,9 +120,9 @@ class ExternalToolsInstaller:
         print("Installing PLINK2...")
         
         if self.system == 'Linux':
-            url = 'https://s3.amazonaws.com/plink2-assets/alpha5/plink2_linux_x86_64_latest.zip'
+            url = 'https://s3.amazonaws.com/plink2-assets/plink2_linux_x86_64_20251205.zip'
         elif self.system == 'Darwin':  # macOS
-            url = 'https://s3.amazonaws.com/plink2-assets/alpha5/plink2_mac_latest.zip'
+            url = 'https://s3.amazonaws.com/plink2-assets/plink2_mac_20251205.zip'
         else:
             print(f"  PLINK2 auto-installation not supported on {self.system}")
             return
@@ -146,10 +146,10 @@ class ExternalToolsInstaller:
         print("Installing GCTA...")
         
         if self.system == 'Linux':
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip'
+            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-linux-kernel-3-x86_64.zip'
             extract_dir = 'gcta-1.94.1-linux-kernel-3-x86_64'
         elif self.system == 'Darwin':  # macOS
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-MacOS-x86_64.zip'
+            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-macOS-arm64.zip'
             extract_dir = 'gcta-1.94.1-MacOS-x86_64'
         else:
             print(f"  GCTA auto-installation not supported on {self.system}")
