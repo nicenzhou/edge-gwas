@@ -34,12 +34,22 @@ from .utils import (
     filter_related_samples,
 )
 
+# Import IO handler functions
+from .io_handler import (
+    save_results,
+    load_alpha_values,
+    format_gwas_output,
+    create_summary_report,
+    download_test_files,
+)
+
 # Import visualize functions
 from .visualize import (
     manhattan_plot,
     qq_plot,
     plot_alpha_distribution,
 )
+
 
 __all__ = [
     # Core
@@ -59,6 +69,12 @@ __all__ = [
     'filter_samples_by_call_rate',
     'calculate_hwe_pvalues',
     'filter_variants_by_hwe',
+    
+    # IO handlers
+    'save_results',
+    'load_alpha_values',
+    'format_gwas_output',
+    'create_summary_report',
     'download_test_files',
     
     # Population structure
