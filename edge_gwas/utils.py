@@ -39,18 +39,23 @@ def load_plink_data(
     # Read PLINK data
     G = read_plink1_bin(bed_file, bim_file, fam_file, verbose=verbose)
     
-    # Extract genotype matrix
-    genotypes = G.values # Transpose to get samples x variants
+    # Extract genotype matrix (NO TRANSPOSE)
+    genotypes = G.values 
     sample_ids = G.coords['sample'].values
     variant_ids = G.coords['snp'].values
     
-    # Create genotype DataFrame
+    # Convert to numpy array if it's a dask/xarray
+    if hasattr(genotypes, 'compute'):
+        genotypes = genotypes.compute()
+    genotypes = np.asarray(genotypes)
+    
+    # Create DataFrame: variants as rows, samples as columns
+    # Then transpose to get samples as rows, variants as columns
     genotype_df = pd.DataFrame(
-        genotypes,
-        index=sample_ids,
-        columns=variant_ids
+        genotypes.T,  # Transpose HERE in the DataFrame constructor
+        index=pd.Index(sample_ids, name='sample_id'),
+        columns=pd.Index(variant_ids, name='variant_id')
     )
-    genotype_df.index.name = 'sample_id'
     
     # Create variant info DataFrame
     variant_info_df = pd.DataFrame({
