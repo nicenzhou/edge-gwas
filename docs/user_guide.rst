@@ -379,11 +379,21 @@ Quick Reference
 See Also
 --------
 
-* :ref:`quickstart` - Get started in 5 minutes
-* :ref:`examples` - Complete example workflows
-* :ref:`api_reference` - Detailed API documentation
-* :ref:`statistical_model` - Mathematical framework
-* :ref:`changelog` - What's new in v0.1.1
+**Documentation:**
+
+* :ref:`index` - Index page of the documentation
+* :ref:`installation` - Installation instructions and requirements
+* :ref:`quickstart` - Getting started guide with simple examples
+* :ref:`user_guide` - Comprehensive user guide and tutorials
+* :ref:`api_reference` - Complete API documentation
+* :ref:`examples` - Example analyses and case studies
+* :ref:`visualization` - Plotting and visualization guide
+* :ref:`statistical_model` - Statistical methods and mathematical background
+* :ref:`troubleshooting` - Troubleshooting guide and common issues
+* :ref:`faq` - Frequently asked questions
+* :ref:`citation` - How to cite EDGE in publications
+* :ref:`changelog` - Version history and release notes
+* :ref:`futureupdates` - Planned features and roadmap
 
 ---
 
