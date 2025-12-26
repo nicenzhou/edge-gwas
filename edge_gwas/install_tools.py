@@ -172,24 +172,28 @@ class ExternalToolsInstaller:
             print("\nAvailable GCTA versions for macOS:")
             print("  1. ARM64 (M1/M2/M3 Macs - native, v1.95.0)")
             print("  2. x86_64 (Intel Macs or Rosetta 2 - stable, v1.94.1)")
+            print("  3. Linux version (fallback - works via compatibility)")
             
             if self.machine == 'arm64':
                 print("\nRecommended: Option 1 (ARM64) for native performance")
-                print("Note: Option 2 also works on Apple Silicon via Rosetta 2")
+                print("Note: If option 1 fails, will automatically try Linux version")
                 default = '1'
             else:
                 print("\nRecommended: Option 2 (x86_64)")
+                print("Note: If option 2 fails, will automatically try Linux version")
                 default = '2'
             
-            choice = input(f"\nSelect version [1/2, default={default}]: ").strip()
+            choice = input(f"\nSelect version [1/2/3, default={default}]: ").strip()
             
             if not choice:
                 choice = default
             
             if choice == '1':
                 return 'arm64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-macOS-arm64.zip', 'gcta-1.95.0-macOS-arm64'
-            else:
+            elif choice == '2':
                 return 'x86_64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-MacOS-x86_64.zip', 'gcta-1.94.1-MacOS-x86_64'
+            else:
+                return 'linux', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip', 'gcta-1.94.1-linux-kernel-3-x86_64'
     
     def install_all(self):
         """Install all external tools."""
@@ -279,20 +283,38 @@ class ExternalToolsInstaller:
             print(f"  ⚠ PLINK2 installed at {binary_path} (verification skipped: {e})")
     
     def install_gcta(self):
-        """Install GCTA."""
+        """Install GCTA with fallback to Linux version on macOS."""
         print("\nInstalling GCTA...")
         
         if self.system == 'Linux':
             url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip'
             extract_dir = 'gcta-1.94.1-linux-kernel-3-x86_64'
             arch_type = 'linux'
+            use_fallback = False
         elif self.system == 'Darwin':  # macOS
             arch_type, url, extract_dir = self.choose_mac_architecture("GCTA")
             print(f"  Selected: GCTA macOS {arch_type}")
+            use_fallback = (arch_type != 'linux')  # Only use fallback if not already Linux version
         else:
             print(f"  GCTA auto-installation not supported on {self.system}")
             raise Exception(f"Unsupported OS: {self.system}")
         
+        # Try the selected version
+        try:
+            self._install_gcta_version(url, extract_dir, arch_type)
+        except Exception as e:
+            if use_fallback and self.system == 'Darwin':
+                print(f"\n  macOS version failed: {e}")
+                print(f"  Trying Linux version as fallback...")
+                # Fallback to Linux version
+                fallback_url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip'
+                fallback_dir = 'gcta-1.94.1-linux-kernel-3-x86_64'
+                self._install_gcta_version(fallback_url, fallback_dir, 'linux-fallback')
+            else:
+                raise
+    
+    def _install_gcta_version(self, url, extract_dir, arch_type):
+        """Install a specific GCTA version."""
         zip_path = self.bin_dir / 'gcta.zip'
         print(f"  Downloading from {url}...")
         
@@ -300,8 +322,6 @@ class ExternalToolsInstaller:
             self.download_file(url, zip_path)
         except Exception as e:
             print(f"\n  Download failed: {e}")
-            print(f"\n  You can download manually:")
-            print(f"    curl -L -k -o {zip_path} {url}")
             raise
         
         print(f"  Extracting...")
@@ -314,9 +334,7 @@ class ExternalToolsInstaller:
         except zipfile.BadZipFile as e:
             print(f"  Error: Invalid zip file")
             print(f"  File size: {zip_path.stat().st_size} bytes")
-            print(f"  Try downloading manually to verify:")
-            print(f"    curl -L -k -o test.zip {url}")
-            print(f"    unzip -t test.zip")
+            zip_path.unlink(missing_ok=True)
             raise Exception(f"Invalid zip file: {e}")
         
         # Look for the binary in the extracted directory
@@ -325,7 +343,7 @@ class ExternalToolsInstaller:
         # For ARM64 version, binary might be named differently
         if not source_binary.exists():
             # Try alternative names
-            possible_names = ['gcta', 'gcta-1.95.0', 'gcta_1.95.0']
+            possible_names = ['gcta', 'gcta-1.95.0', 'gcta_1.95.0', 'gcta-1.94.1']
             for name in possible_names:
                 alt_binary = self.bin_dir / extract_dir / name
                 if alt_binary.exists():
@@ -346,17 +364,25 @@ class ExternalToolsInstaller:
                     if item.is_dir() and 'gcta' in item.name.lower():
                         print(f"    - {item.name}")
             
+            # Clean up before raising exception
+            zip_path.unlink(missing_ok=True)
+            shutil.rmtree(self.bin_dir / extract_dir, ignore_errors=True)
             raise Exception(f"GCTA binary not found in extracted directory")
         
         dest_binary = self.bin_dir / 'gcta64'
         
         print(f"  Moving {source_binary.name} to {dest_binary.name}")
+        
+        # Remove existing binary if present
+        if dest_binary.exists():
+            dest_binary.unlink()
+        
         shutil.move(str(source_binary), str(dest_binary))
         dest_binary.chmod(0o755)
         
         # Clean up
         shutil.rmtree(self.bin_dir / extract_dir, ignore_errors=True)
-        zip_path.unlink()
+        zip_path.unlink(missing_ok=True)
         
         # Verify installation
         try:
@@ -364,7 +390,7 @@ class ExternalToolsInstaller:
                                   capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
                 version_info = result.stdout.strip().split('\n')[0]
-                print(f"  ✓ GCTA installed successfully: {version_info}")
+                print(f"  ✓ GCTA installed successfully ({arch_type}): {version_info}")
             else:
                 print(f"  ⚠ GCTA installed but verification failed")
         except Exception as e:
