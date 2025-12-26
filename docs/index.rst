@@ -1,3 +1,4 @@
+
 Welcome to edge-gwas Documentation
 ===================================
 
@@ -5,12 +6,14 @@ Welcome to edge-gwas Documentation
 using flexible genetic encoding, rather than assuming additive inheritance.
 
 .. warning::
-   **Version 0.1.0** is currently under active development and public testing.
+   ⚠️ **Current Version 0.1.1** - Under Public Testing
+   
+   Recommended to use v0.1.0 - more stable although with fewer functions.
 
 .. note::
    The original EDGE implementation (v0.0.0) is available at 
    `https://github.com/nicenzhou/EDGE <https://github.com/nicenzhou/EDGE>`_.
-   Version 0.0.0 is **no longer maintained**; users are encouraged to migrate to v0.1.0.
+   Version 0.0.0 is **no longer maintained**; users are encouraged to migrate to v0.1.0+.
 
 .. toctree::
    :maxdepth: 2
@@ -30,13 +33,13 @@ Key Features
 ------------
 
 * **Two-stage analysis**: Calculate alpha on training data, apply to test data
-* **Flexible encoding**: Detects under-recessive, recessive, additive, dominant, and over-dominant effects
-* **Multiple outcomes**: Handles binary and quantitative outcomes
-* **PLINK support**: Native support for PLINK format data
-* **Built-in visualization**: Manhattan plots, QQ plots, and alpha distribution plots
+* **Flexible encoding**: Detects recessive, additive, dominant, and over-dominant effects
+* **Multiple outcomes**: Binary and quantitative traits
+* **PLINK support**: Native .bed/.bim/.fam format
+* **Visualization**: Manhattan, QQ, and alpha distribution plots
 
-Quick Example
--------------
+Quick Start
+-----------
 
 .. code-block:: python
 
@@ -47,24 +50,30 @@ Quick Example
    geno, info = load_plink_data('data.bed', 'data.bim', 'data.fam')
    pheno = prepare_phenotype_data('pheno.txt', 'disease', ['age', 'sex'])
    
-   # Run EDGE analysis
+   # Run analysis
    edge = EDGEAnalysis(outcome_type='binary')
    alpha_df, gwas_df = edge.run_full_analysis(
        train_geno, train_pheno, test_geno, test_pheno,
        outcome='disease', covariates=['age', 'sex']
    )
 
-Getting Help
-------------
+Support
+-------
 
-* `GitHub Issues <https://github.com/YOUR-USERNAME/edge-gwas/issues>`_
-* `GitHub Discussions <https://github.com/YOUR-USERNAME/edge-gwas/discussions>`_
-* Email: jyzhou@stanford.edu (Code Questions)
-* Email: molly.hall@pennmedicine.upenn.edu (Research Questions)
+* **Issues**: `GitHub Issues <https://github.com/YOUR-USERNAME/edge-gwas/issues>`_
+* **Discussions**: `GitHub Discussions <https://github.com/YOUR-USERNAME/edge-gwas/discussions>`_
+* **Code Questions**: jyzhou@stanford.edu
+* **Research Questions**: molly.hall@pennmedicine.upenn.edu
 
-Indices and Tables
-==================
+Indices
+=======
 
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+
+---
+
+*Last updated: 2025-12-25 for edge-gwas v0.1.1*
+
+*For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues
