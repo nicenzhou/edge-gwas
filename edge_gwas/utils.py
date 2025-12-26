@@ -413,7 +413,9 @@ def stratified_train_test_split(
     outcome_col: str,
     test_size: float = 0.5,
     random_state: int = 42,
-    is_binary: bool = True
+    is_binary: bool = True,
+    geno_id_col: Optional[str] = None,
+    pheno_id_col: Optional[str] = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Split data into training and test sets with stratification.
@@ -425,24 +427,99 @@ def stratified_train_test_split(
         test_size: Proportion of data for test set
         random_state: Random seed for reproducibility
         is_binary: Whether outcome is binary (for stratification)
+        geno_id_col: Column/index name for sample IDs in genotype_df 
+                     (default: None, uses index)
+        pheno_id_col: Column/index name for sample IDs in phenotype_df
+                      (default: None, uses index)
         
     Returns:
         Tuple of (train_geno, test_geno, train_pheno, test_pheno)
+        
+    Examples:
+        >>> # Using default indices
+        >>> train_g, test_g, train_p, test_p = stratified_train_test_split(
+        ...     geno, pheno, 'disease', test_size=0.3
+        ... )
+        
+        >>> # Using specific columns
+        >>> train_g, test_g, train_p, test_p = stratified_train_test_split(
+        ...     geno, pheno, 'disease',
+        ...     geno_id_col='sample_id',
+        ...     pheno_id_col='IID'
+        ... )
+        
+        >>> # Genotype uses index, phenotype uses column
+        >>> train_g, test_g, train_p, test_p = stratified_train_test_split(
+        ...     geno, pheno, 'disease',
+        ...     geno_id_col=None,
+        ...     pheno_id_col='participant_id'
+        ... )
     """
     logger.info(f"Splitting data into train/test ({1-test_size:.0%}/{test_size:.0%})")
     
+    # Get sample identifiers from genotype DataFrame
+    if geno_id_col is None:
+        geno_samples = genotype_df.index
+        logger.debug("Using genotype DataFrame index for sample IDs")
+    elif geno_id_col in genotype_df.columns:
+        geno_samples = genotype_df[geno_id_col]
+        logger.debug(f"Using genotype column '{geno_id_col}' for sample IDs")
+    elif genotype_df.index.name == geno_id_col:
+        geno_samples = genotype_df.index
+        logger.debug(f"Using genotype index (name='{geno_id_col}') for sample IDs")
+    else:
+        raise ValueError(
+            f"Column '{geno_id_col}' not found in genotype DataFrame. "
+            f"Available columns: {genotype_df.columns.tolist()}"
+        )
+    
+    # Get sample identifiers from phenotype DataFrame
+    if pheno_id_col is None:
+        pheno_samples = phenotype_df.index
+        logger.debug("Using phenotype DataFrame index for sample IDs")
+    elif pheno_id_col in phenotype_df.columns:
+        pheno_samples = phenotype_df[pheno_id_col]
+        logger.debug(f"Using phenotype column '{pheno_id_col}' for sample IDs")
+    elif phenotype_df.index.name == pheno_id_col:
+        pheno_samples = phenotype_df.index
+        logger.debug(f"Using phenotype index (name='{pheno_id_col}') for sample IDs")
+    else:
+        raise ValueError(
+            f"Column '{pheno_id_col}' not found in phenotype DataFrame. "
+            f"Available columns: {phenotype_df.columns.tolist()}"
+        )
+    
     # Get common samples
-    common_samples = genotype_df.index.intersection(phenotype_df.index)
+    common_samples = pd.Index(geno_samples).intersection(pd.Index(pheno_samples))
     
     if len(common_samples) == 0:
-        raise ValueError("No common samples found between genotype and phenotype data")
+        raise ValueError(
+            f"No common samples found between genotype and phenotype data.\n"
+            f"Genotype samples (n={len(geno_samples)}): {list(geno_samples[:5])}...\n"
+            f"Phenotype samples (n={len(pheno_samples)}): {list(pheno_samples[:5])}...\n"
+            f"Check if geno_id_col='{geno_id_col}' and pheno_id_col='{pheno_id_col}' "
+            f"are correctly specified."
+        )
     
-    genotype_df = genotype_df.loc[common_samples]
-    phenotype_df = phenotype_df.loc[common_samples]
+    logger.info(f"Found {len(common_samples)} common samples out of "
+                f"{len(geno_samples)} genotype and {len(pheno_samples)} phenotype samples")
+    
+    # Subset to common samples
+    if geno_id_col is None or genotype_df.index.name == geno_id_col:
+        genotype_df_subset = genotype_df.loc[common_samples]
+    else:
+        genotype_df_subset = genotype_df[genotype_df[geno_id_col].isin(common_samples)].copy()
+        genotype_df_subset = genotype_df_subset.set_index(geno_id_col)
+    
+    if pheno_id_col is None or phenotype_df.index.name == pheno_id_col:
+        phenotype_df_subset = phenotype_df.loc[common_samples]
+    else:
+        phenotype_df_subset = phenotype_df[phenotype_df[pheno_id_col].isin(common_samples)].copy()
+        phenotype_df_subset = phenotype_df_subset.set_index(pheno_id_col)
     
     # Stratify if binary outcome
     if is_binary:
-        stratify = phenotype_df[outcome_col]
+        stratify = phenotype_df_subset[outcome_col]
     else:
         stratify = None
     
@@ -455,10 +532,10 @@ def stratified_train_test_split(
     )
     
     # Split data
-    train_geno = genotype_df.loc[train_idx]
-    test_geno = genotype_df.loc[test_idx]
-    train_pheno = phenotype_df.loc[train_idx]
-    test_pheno = phenotype_df.loc[test_idx]
+    train_geno = genotype_df_subset.loc[train_idx]
+    test_geno = genotype_df_subset.loc[test_idx]
+    train_pheno = phenotype_df_subset.loc[train_idx]
+    test_pheno = phenotype_df_subset.loc[test_idx]
     
     logger.info(f"Training set: {len(train_idx)} samples")
     logger.info(f"Test set: {len(test_idx)} samples")
@@ -470,7 +547,6 @@ def stratified_train_test_split(
         logger.info(f"Test cases/controls: {test_cases}/{len(test_idx)-test_cases}")
     
     return train_geno, test_geno, train_pheno, test_pheno
-
 
 def filter_variants_by_maf(
     genotype_df: pd.DataFrame,
