@@ -191,9 +191,9 @@ class ExternalToolsInstaller:
             if choice == '1':
                 return 'arm64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-macOS-arm64.zip', 'gcta-1.95.0-macOS-arm64'
             elif choice == '2':
-                return 'x86_64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-MacOS-x86_64.zip', 'gcta-1.94.1-MacOS-x86_64'
+                return 'x86_64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-macOS-x86_64.zip', 'gcta-1.94.1-macOS-x86_64'
             else:
-                return 'linux', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip', 'gcta-1.94.1-linux-kernel-3-x86_64'
+                return 'linux', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-linux-kernel-3-x86_64.zip', 'gcta-1.95.0-linux-kernel-3-x86_64'
     
     def install_all(self):
         """Install all external tools."""
