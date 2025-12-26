@@ -2,6 +2,8 @@
 Input/Output handlers for EDGE GWAS analysis.
 """
 
+import os
+import urllib.request
 import pandas as pd
 import numpy as np
 from typing import Optional, Dict, List
@@ -192,6 +194,7 @@ def create_summary_report(
         logger.info(f"Summary report saved to {output_file}")
     
     return report
+
 
 def download_test_files(
     output_dir: str = 'tests',
