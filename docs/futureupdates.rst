@@ -1343,6 +1343,7 @@ See Also
 
 **Documentation:**
 
+* :ref:`index` - Index page of the documentation
 * :ref:`installation` - Installation instructions and requirements
 * :ref:`quickstart` - Getting started guide with simple examples
 * :ref:`user_guide` - Comprehensive user guide and tutorials
@@ -1361,4 +1362,3 @@ See Also
 *Last updated: 2025-12-25 for edge-gwas v0.1.1*
 
 *For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues
-                          
