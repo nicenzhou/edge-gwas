@@ -5,7 +5,7 @@ Quick Start Guide
 
 This guide demonstrates a complete EDGE GWAS analysis in minutes using v0.1.1 features.
 
-Minimal Example (3 Minutes)
+Minimal Example
 ----------------------------
 
 Fast minimal EDGE GWAS analysis:
@@ -43,7 +43,7 @@ Fast minimal EDGE GWAS analysis:
    lambda_gc = qq_plot(gwas_df, 'qq.png')
    print(f"Lambda GC: {lambda_gc:.3f}")
 
-Complete Example with v0.1.1 Features (10 Minutes)
+Complete Example with v0.1.1 Features
 ---------------------------------------------------
 
 Full workflow with population structure control:
