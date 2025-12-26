@@ -183,7 +183,7 @@ class ExternalToolsInstaller:
         if self.system == 'Linux':
             url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-linux-kernel-3-x86_64.zip'
         elif self.system == 'Darwin':  # macOS
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-macOS-arm64.zip'
+            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-macOS-x86_64.zip'
         else:
             print(f"  GCTA auto-installation not supported on {self.system}")
             raise Exception(f"Unsupported OS: {self.system}")
