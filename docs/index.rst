@@ -23,11 +23,14 @@ using flexible genetic encoding, rather than assuming additive inheritance.
    quickstart
    user_guide
    api_reference
-   examples
    statistical_model
+   examples
    visualization
    changelog
    citation
+   troubleshooting
+   faq
+   futureupdates
 
 Key Features
 ------------
@@ -65,12 +68,24 @@ Support
 * **Code Questions**: jyzhou@stanford.edu
 * **Research Questions**: molly.hall@pennmedicine.upenn.edu
 
-Indices
-=======
+See Also
+--------
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+**Documentation:**
+
+* :ref:`index` - Index page of the documentation
+* :ref:`installation` - Installation instructions and requirements
+* :ref:`quickstart` - Getting started guide with simple examples
+* :ref:`user_guide` - Comprehensive user guide and tutorials
+* :ref:`api_reference` - Complete API documentation
+* :ref:`examples` - Example analyses and case studies
+* :ref:`visualization` - Plotting and visualization guide
+* :ref:`statistical_model` - Statistical methods and mathematical background
+* :ref:`troubleshooting` - Troubleshooting guide and common issues
+* :ref:`faq` - Frequently asked questions
+* :ref:`citation` - How to cite EDGE in publications
+* :ref:`changelog` - Version history and release notes
+* :ref:`futureupdates` - Planned features and roadmap
 
 ---
 
