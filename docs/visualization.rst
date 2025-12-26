@@ -855,10 +855,26 @@ Multiple format export:
 See Also
 --------
 
-* :ref:`examples` - Example workflows with visualizations
-* :ref:`api_reference` - Visualization function documentation
-* :ref:`user_guide` - General usage guide
+**Documentation:**
 
+* :ref:`installation` - Installation instructions and requirements
+* :ref:`quickstart` - Getting started guide with simple examples
+* :ref:`user_guide` - Comprehensive user guide and tutorials
+* :ref:`api_reference` - Complete API documentation
+* :ref:`examples` - Example analyses and case studies
+* :ref:`visualization` - Plotting and visualization guide
+* :ref:`statistical_model` - Statistical methods and mathematical background
+* :ref:`troubleshooting` - Troubleshooting guide and common issues
+* :ref:`faq` - Frequently asked questions
+* :ref:`citation` - How to cite EDGE in publications
+* :ref:`changelog` - Version history and release notes
+* :ref:`futureupdates` - Planned features and roadmap
+
+---
+
+*Last updated: 2025-12-25 for edge-gwas v0.1.1*
+
+*For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues
 ---
 
 *Last updated: 2025-12-25 for edge-gwas v0.1.1*
