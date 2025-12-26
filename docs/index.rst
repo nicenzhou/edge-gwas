@@ -1,3 +1,9 @@
+.. edge-gwas documentation master file
+
+.. image:: images/EDGE.jpg
+   :alt: EDGE Logo
+   :width: 300px
+   :align: center
 
 Welcome to edge-gwas Documentation
 ===================================
