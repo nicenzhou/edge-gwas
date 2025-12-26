@@ -830,6 +830,485 @@ Power Analysis Visualization
        plt.tight_layout()
        plt.savefig('power_curves.png', dpi=300, bbox_inches='tight')
 
+Simulation Code
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Simulate GWAS data with known alpha:**
+
+.. code-block:: python
+
+   import numpy as np
+   import pandas as pd
+   from scipy.stats import bernoulli, norm
+   
+   def simulate_gwas_data(n_samples, n_variants, maf, alpha_true, beta_true, 
+                          h2=0.3, outcome_type='continuous'):
+       """
+       Simulate GWAS data with specified inheritance pattern.
+       
+       Args:
+           n_samples: Number of samples
+           n_variants: Number of variants
+           maf: Minor allele frequency
+           alpha_true: True alpha value
+           beta_true: True effect size
+           h2: Heritability (for continuous outcomes)
+           outcome_type: 'continuous' or 'binary'
+       
+       Returns:
+           genotype_df, phenotype_df
+       """
+       # Simulate genotypes under HWE
+       genotypes = np.zeros((n_samples, n_variants), dtype=int)
+       
+       for j in range(n_variants):
+           # Allele frequencies
+           p = maf  # Frequency of alt allele
+           
+           # Genotype probabilities under HWE
+           p_00 = (1 - p) ** 2
+           p_01 = 2 * p * (1 - p)
+           p_11 = p ** 2
+           
+           # Sample genotypes
+           geno_probs = np.random.choice([0, 1, 2], size=n_samples, 
+                                         p=[p_00, p_01, p_11])
+           genotypes[:, j] = geno_probs
+       
+       # Simulate phenotypes
+       # Assume first variant is causal
+       causal_geno = genotypes[:, 0]
+       
+       # Create EDGE encoding for causal variant
+       edge_encoded = np.where(causal_geno == 0, 1.0,
+                              np.where(causal_geno == 1, alpha_true, 0.0))
+       
+       # Genetic component
+       genetic_component = beta_true * edge_encoded
+       
+       if outcome_type == 'continuous':
+           # Add environmental noise
+           var_genetic = np.var(genetic_component)
+           var_environmental = var_genetic * (1 - h2) / h2
+           
+           environmental = np.random.normal(0, np.sqrt(var_environmental), n_samples)
+           outcome = genetic_component + environmental
+           
+       else:  # binary
+           # Logistic model
+           prob_case = 1 / (1 + np.exp(-genetic_component))
+           outcome = bernoulli.rvs(prob_case)
+       
+       # Create DataFrames
+       genotype_df = pd.DataFrame(
+           genotypes,
+           columns=[f'rs{i}' for i in range(n_variants)]
+       )
+       
+       # Simulate covariates
+       age = np.random.normal(50, 10, n_samples)
+       sex = np.random.binomial(1, 0.5, n_samples)
+       
+       phenotype_df = pd.DataFrame({
+           'outcome': outcome,
+           'age': age,
+           'sex': sex
+       })
+       
+       return genotype_df, phenotype_df
+   
+   # Example usage
+   geno, pheno = simulate_gwas_data(
+       n_samples=10000,
+       n_variants=1000,
+       maf=0.3,
+       alpha_true=0.2,  # Recessive
+       beta_true=0.5,
+       outcome_type='continuous'
+   )
+
+**Validate EDGE performance:**
+
+.. code-block:: python
+
+   from edge_gwas import EDGEAnalysis
+   from sklearn.model_selection import train_test_split
+   
+   # Split simulated data
+   train_ids, test_ids = train_test_split(
+       geno.index, test_size=0.5, random_state=42
+   )
+   
+   # Run EDGE
+   edge = EDGEAnalysis(outcome_type='continuous')
+   alpha_df, gwas_results = edge.run_full_analysis(
+       geno.loc[train_ids], pheno.loc[train_ids],
+       geno.loc[test_ids], pheno.loc[test_ids],
+       outcome='outcome',
+       covariates=['age', 'sex']
+   )
+   
+   # Check alpha recovery
+   estimated_alpha = alpha_df[alpha_df['variant_id'] == 'rs0']['alpha_value'].values[0]
+   print(f"True alpha: {0.2:.3f}")
+   print(f"Estimated alpha: {estimated_alpha:.3f}")
+   print(f"Error: {abs(estimated_alpha - 0.2):.3f}")
+   
+   # Check p-value
+   causal_pval = gwas_results[gwas_results['variant_id'] == 'rs0']['pval'].values[0]
+   print(f"P-value for causal variant: {causal_pval:.2e}")
+
+Sample Size Calculations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Power calculation for EDGE:**
+
+.. code-block:: python
+
+   from scipy.stats import norm, nct
+   import numpy as np
+   
+   def edge_power_calculation(n, maf, alpha_true, beta, sig_level=5e-8):
+       """
+       Calculate statistical power for EDGE analysis.
+       
+       Args:
+           n: Sample size
+           maf: Minor allele frequency
+           alpha_true: True alpha value
+           beta: Effect size
+           sig_level: Significance threshold
+       
+       Returns:
+           Statistical power (0-1)
+       """
+       # Genotype frequencies under HWE
+       p_00 = (1 - maf) ** 2
+       p_01 = 2 * maf * (1 - maf)
+       p_11 = maf ** 2
+       
+       # EDGE encoding variance
+       edge_00 = 1.0
+       edge_01 = alpha_true
+       edge_11 = 0.0
+       
+       mean_edge = p_00 * edge_00 + p_01 * edge_01 + p_11 * edge_11
+       var_edge = (p_00 * edge_00**2 + p_01 * edge_01**2 + 
+                   p_11 * edge_11**2 - mean_edge**2)
+       
+       # Non-centrality parameter
+       ncp = beta * np.sqrt(n * var_edge)
+       
+       # Critical value
+       z_crit = norm.ppf(1 - sig_level / 2)
+       
+       # Power
+       power = 1 - norm.cdf(z_crit - ncp) + norm.cdf(-z_crit - ncp)
+       
+       return power
+   
+   # Example: Power curves
+   import matplotlib.pyplot as plt
+   
+   sample_sizes = np.arange(1000, 50000, 1000)
+   alpha_values = [0, 0.25, 0.5, 0.75, 1.0]
+   
+   fig, ax = plt.subplots(figsize=(10, 6))
+   
+   for alpha in alpha_values:
+       powers = [edge_power_calculation(n, maf=0.3, alpha_true=alpha, beta=0.1)
+                 for n in sample_sizes]
+       ax.plot(sample_sizes, powers, label=f'α={alpha}')
+   
+   ax.axhline(0.8, color='gray', linestyle='--', label='80% power')
+   ax.set_xlabel('Sample Size')
+   ax.set_ylabel('Statistical Power')
+   ax.set_title('EDGE Power by Inheritance Pattern\n(MAF=0.3, β=0.1)')
+   ax.legend()
+   ax.grid(True, alpha=0.3)
+   plt.savefig('power_analysis.png', dpi=300)
+
+**Sample size requirement:**
+
+For 80% power at genome-wide significance (p < 5×10⁻⁸):
+
+.. code-block:: python
+
+   def required_sample_size(maf, alpha_true, beta, power=0.8, sig_level=5e-8):
+       """
+       Calculate required sample size for desired power.
+       
+       Returns:
+           Required sample size
+       """
+       from scipy.optimize import fsolve
+       
+       def power_equation(n):
+           return edge_power_calculation(n, maf, alpha_true, beta, sig_level) - power
+       
+       n_required = fsolve(power_equation, x0=10000)[0]
+       return int(np.ceil(n_required))
+   
+   # Examples
+   scenarios = [
+       {'maf': 0.3, 'alpha': 0.2, 'beta': 0.1, 'label': 'Recessive'},
+       {'maf': 0.3, 'alpha': 0.5, 'beta': 0.1, 'label': 'Additive'},
+       {'maf': 0.3, 'alpha': 0.8, 'beta': 0.1, 'label': 'Dominant'},
+   ]
+   
+   print("Sample size requirements for 80% power:")
+   print("=" * 60)
+   for scenario in scenarios:
+       n_req = required_sample_size(
+           scenario['maf'], 
+           scenario['alpha'], 
+           scenario['beta']
+       )
+       print(f"{scenario['label']:12s}: N = {n_req:,}")
+
+Useful Helper Functions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Calculate Minor Allele Frequency:**
+
+.. code-block:: python
+
+   def calculate_maf(genotype_series):
+       """
+       Calculate minor allele frequency from genotype data.
+       
+       Args:
+           genotype_series: Pandas Series with genotypes (0, 1, 2)
+       
+       Returns:
+           MAF value
+       """
+       valid_geno = genotype_series.dropna()
+       
+       # Count alleles
+       n_alt = (2 * (valid_geno == 2).sum() + 
+                (valid_geno == 1).sum())
+       n_total = 2 * len(valid_geno)
+       
+       # Frequency
+       freq_alt = n_alt / n_total
+       
+       # MAF is minimum of alt and ref frequency
+       maf = min(freq_alt, 1 - freq_alt)
+       
+       return maf
+
+**Calculate Hardy-Weinberg Equilibrium p-value:**
+
+.. code-block:: python
+
+   def calculate_hwe(genotype_series, case_control=None):
+       """
+       Test for Hardy-Weinberg Equilibrium.
+       
+       Args:
+           genotype_series: Pandas Series with genotypes
+           case_control: Optional Series indicating cases (1) and controls (0)
+                        If provided, tests HWE in controls only
+       
+       Returns:
+           HWE p-value
+       """
+       from scipy.stats import chi2
+       
+       # Use controls only if case/control provided
+       if case_control is not None:
+           geno = genotype_series[case_control == 0]
+       else:
+           geno = genotype_series
+       
+       # Count genotypes
+       n_00 = (geno == 0).sum()
+       n_01 = (geno == 1).sum()
+       n_11 = (geno == 2).sum()
+       n_total = n_00 + n_01 + n_11
+       
+       # Allele frequency
+       p_alt = (2 * n_11 + n_01) / (2 * n_total)
+       p_ref = 1 - p_alt
+       
+       # Expected counts under HWE
+       exp_00 = n_total * p_ref ** 2
+       exp_01 = n_total * 2 * p_ref * p_alt
+       exp_11 = n_total * p_alt ** 2
+       
+       # Chi-square test (1 df)
+       chi2_stat = ((n_00 - exp_00) ** 2 / exp_00 +
+                    (n_01 - exp_01) ** 2 / exp_01 +
+                    (n_11 - exp_11) ** 2 / exp_11)
+       
+       p_value = 1 - chi2.cdf(chi2_stat, df=1)
+       
+       return p_value
+
+**Calculate Genomic Inflation Factor:**
+
+.. code-block:: python
+
+   def calculate_lambda(pvalues):
+       """
+       Calculate genomic inflation factor (lambda).
+       
+       Args:
+           pvalues: Array of p-values
+       
+       Returns:
+           Lambda value
+       """
+       from scipy.stats import chi2
+       
+       # Remove NaN
+       pvals_clean = pvalues[~np.isnan(pvalues)]
+       
+       # Convert to chi-square statistics
+       chi2_stats = chi2.ppf(1 - pvals_clean, df=1)
+       
+       # Lambda is ratio of observed to expected median
+       lambda_gc = np.median(chi2_stats) / chi2.ppf(0.5, df=1)
+       
+       return lambda_gc
+
+**Apply Genomic Control:**
+
+.. code-block:: python
+
+   def apply_genomic_control(pvalues, lambda_gc):
+       """
+       Adjust p-values using genomic control.
+       
+       Args:
+           pvalues: Original p-values
+           lambda_gc: Genomic inflation factor
+       
+       Returns:
+           Adjusted p-values
+       """
+       from scipy.stats import chi2
+       
+       # Convert to chi-square
+       chi2_stats = chi2.ppf(1 - pvalues, df=1)
+       
+       # Adjust by lambda
+       chi2_adjusted = chi2_stats / lambda_gc
+       
+       # Convert back to p-values
+       pvalues_adjusted = 1 - chi2.cdf(chi2_adjusted, df=1)
+       
+       return pvalues_adjusted
+
+**Identify Unrelated Samples:**
+
+.. code-block:: python
+
+   def identify_unrelated_samples(kinship_matrix, threshold=0.0884):
+       """
+       Identify maximal set of unrelated individuals.
+       
+       Args:
+           kinship_matrix: N×N kinship matrix
+           threshold: Kinship threshold (0.0884 = 3rd degree)
+       
+       Returns:
+           List of unrelated sample indices
+       """
+       import networkx as nx
+       
+       n = kinship_matrix.shape[0]
+       
+       # Create graph of related pairs
+       G = nx.Graph()
+       G.add_nodes_from(range(n))
+       
+       for i in range(n):
+           for j in range(i + 1, n):
+               if kinship_matrix[i, j] > threshold:
+                   G.add_edge(i, j)
+       
+       # Find maximum independent set (NP-hard, use greedy approximation)
+       unrelated = nx.maximal_independent_set(G)
+       
+       return sorted(unrelated)
+
+**Convert Between Genotype Formats:**
+
+.. code-block:: python
+
+   def convert_genotype_format(genotype, from_format, to_format):
+       """
+       Convert between different genotype encoding formats.
+       
+       Args:
+           genotype: Genotype data
+           from_format: '012', 'nucleotide', 'dosage'
+           to_format: '012', 'nucleotide', 'dosage'
+       
+       Returns:
+           Converted genotype
+       """
+       if from_format == '012' and to_format == 'nucleotide':
+           # Requires allele information
+           # Example: 0->AA, 1->AG, 2->GG
+           raise NotImplementedError("Requires allele information")
+       
+       elif  from_format == 'dosage' and to_format == '012':
+           # Round dosages to nearest integer
+           return np.round(genotype).astype(int)
+       
+       elif from_format == '012' and to_format == 'dosage':
+           # Already compatible (0, 1, 2 are valid dosages)
+           return genotype.astype(float)
+       
+       else:
+           raise ValueError(f"Conversion from {from_format} to {to_format} not implemented")
+
+**Annotate Variants with Gene Information:**
+
+.. code-block:: python
+
+   def annotate_variants_with_genes(variants_df, gtf_file, window_kb=0):
+       """
+       Annotate variants with nearest gene information.
+       
+       Args:
+           variants_df: DataFrame with 'chr', 'pos' columns
+           gtf_file: Path to GTF annotation file
+           window_kb: Window around gene (in kb)
+       
+       Returns:
+           DataFrame with gene annotations
+       """
+       import pyranges as pr
+       
+       # Load GTF
+       genes = pr.read_gtf(gtf_file)
+       genes = genes[genes.Feature == "gene"]
+       
+       # Convert variants to ranges
+       variants_gr = pr.PyRanges(
+           chromosomes=variants_df['chr'].values,
+           starts=variants_df['pos'].values,
+           ends=variants_df['pos'].values + 1
+       )
+       
+       # Find nearest genes
+       nearest = variants_gr.nearest(
+           genes,
+           suffix="_gene",
+           how="upstream"
+       )
+       
+       # Add gene information to variants
+       variants_annotated = variants_df.copy()
+       variants_annotated['gene_name'] = nearest.Name.values
+       variants_annotated['gene_distance'] = nearest.Distance.values
+       
+       return variants_annotated
+
 See Also
 --------
 
@@ -841,7 +1320,12 @@ See Also
 * :ref:`api_reference` - Complete API documentation
 * :ref:`examples` - Example analyses and case studies
 * :ref:`visualization` - Plotting and visualization guide
+* :ref:`statistical_model` - Statistical methods and mathematical background
+* :ref:`troubleshooting` - Troubleshooting guide and common issues
 * :ref:`faq` - Frequently asked questions
+* :ref:`citation` - How to cite EDGE in publications
+* :ref:`changelog` - Version history and release notes
+* :ref:`futureupdates` - Planned features and roadmap
 
 ---
 
