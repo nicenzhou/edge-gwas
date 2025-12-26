@@ -877,6 +877,6 @@ See Also
 
 ---
 
-**Version:** 0.1.1  
-**Last Updated:** December 2025  
-**Authors:** Jiayan Zhou
+*Last updated: 2025-12-25 for edge-gwas v0.1.1*
+
+*For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues
