@@ -6,7 +6,8 @@
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
 
 ⚠️ **Current Version 0.1.1 - Under Public Testing**
-** Recommended to use v0.1.0 - more stable, although it is still under testing with fewer functions.**
+
+**Recommended to use v0.1.0 - more stable, although it is still under testing with fewer functions.**
 
 ## Overview
 
