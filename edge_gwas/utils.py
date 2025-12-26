@@ -930,7 +930,8 @@ def calculate_pca_sklearn(
         verbose: Print progress information
         
     Returns:
-        DataFrame with sample IDs as index and PC1, PC2, ..., PCn as columns
+        DataFrame with 'IID' column and PC1, PC2, ..., PCn columns
+        Index is set to IID
         
     Note:
         This is a basic PCA without correction for relatedness.
@@ -953,17 +954,24 @@ def calculate_pca_sklearn(
     pca = PCA(n_components=n_pcs)
     pcs = pca.fit_transform(genotype_std)
     
-    # Create DataFrame
+    # Create DataFrame with IID column
     pc_cols = [f'PC{i+1}' for i in range(n_pcs)]
     pca_df = pd.DataFrame(
         pcs,
-        index=genotype_df.index,
         columns=pc_cols
     )
+    pca_df['IID'] = genotype_df.index.astype(str)
+    
+    # Reorder columns to put IID first
+    pca_df = pca_df[['IID'] + pc_cols]
+    
+    # Set IID as index
+    pca_df.set_index('IID', inplace=True)
     
     if verbose:
         logger.info(f"Explained variance ratio: {pca.explained_variance_ratio_[:5]}")
         logger.info(f"Total variance explained by {n_pcs} PCs: {pca.explained_variance_ratio_.sum():.3f}")
+        logger.info(f"PCA complete for {len(pca_df)} samples")
     
     return pca_df
 
@@ -996,7 +1004,8 @@ def calculate_pca_plink(
         verbose: Print progress information
         
     Returns:
-        DataFrame with sample IDs as index and PC1, PC2, ..., PCn as columns
+        DataFrame with 'IID' column and PC1, PC2, ..., PCn columns
+        Index is set to IID
         
     Note:
         Requires PLINK2 to be installed and available in PATH.
@@ -1078,9 +1087,17 @@ def calculate_pca_plink(
         
         # Set column names
         # PLINK2 format: #FID IID PC1 PC2 ... PCn
-        pca_df.columns = ['FID', 'IID'] + [f'PC{i+1}' for i in range(n_pcs)]
+        pc_cols = [f'PC{i+1}' for i in range(n_pcs)]
+        pca_df.columns = ['FID', 'IID'] + pc_cols
+        
+        # Keep only IID and PC columns
+        pca_df = pca_df[['IID'] + pc_cols]
+        
+        # Convert IID to string
+        pca_df['IID'] = pca_df['IID'].astype(str)
+        
+        # Set IID as index
         pca_df.set_index('IID', inplace=True)
-        pca_df.drop('FID', axis=1, inplace=True)
         
         # Read eigenval file for variance explained
         if verbose:
@@ -1091,8 +1108,7 @@ def calculate_pca_plink(
                 var_explained = eigenvals / total_var
                 logger.info(f"Variance explained by first 5 PCs: {var_explained[:5]}")
                 logger.info(f"Total variance explained by {n_pcs} PCs: {var_explained.sum():.3f}")
-        
-        if verbose:
+            
             logger.info(f"PCA calculation complete. Found {len(pca_df)} samples.")
         
         return pca_df
@@ -1135,7 +1151,8 @@ def calculate_pca_pcair(
         verbose: Print progress information
         
     Returns:
-        DataFrame with sample IDs as index and PC1, PC2, ..., PCn as columns
+        DataFrame with 'IID' column and PC1, PC2, ..., PCn columns
+        Index is set to IID
         
     Note:
         Requires R with GENESIS package installed:
@@ -1246,9 +1263,9 @@ pc_air <- pcair(
 pcs <- pc_air$vectors[, 1:{n_pcs}, drop=FALSE]
 colnames(pcs) <- paste0("PC", 1:{n_pcs})
 
-# Save results
+# Save results with IID column
 output_df <- data.frame(
-    IID = rownames(pcs),
+    IID = as.character(rownames(pcs)),
     pcs,
     stringsAsFactors = FALSE
 )
@@ -1272,7 +1289,7 @@ write.table(
 
 # Save unrelated set
 write.table(
-    data.frame(IID = pc_air$unrels),
+    data.frame(IID = as.character(pc_air$unrels)),
     file = "{output_prefix}_unrelated.txt",
     quote = FALSE,
     row.names = FALSE,
@@ -1311,6 +1328,9 @@ snpgdsClose(gds)
             raise RuntimeError(f"PC-AiR output file not found: {pca_file}")
         
         pca_df = pd.read_csv(pca_file, sep='\t')
+        
+        # Convert IID to string and set as index
+        pca_df['IID'] = pca_df['IID'].astype(str)
         pca_df.set_index('IID', inplace=True)
         
         # Read variance explained
@@ -1439,6 +1459,10 @@ def load_grm_gcta(grm_prefix: str, verbose: bool = True) -> Tuple[np.ndarray, pd
     
     # Load sample IDs
     sample_ids = pd.read_csv(grm_id_file, sep='\t', header=None, names=['FID', 'IID'])
+    
+    # Convert IID to string for consistency
+    sample_ids['IID'] = sample_ids['IID'].astype(str)
+    
     n_samples = len(sample_ids)
     
     # Load GRM values (lower triangle)
@@ -1477,16 +1501,19 @@ def attach_pcs_to_phenotype(
     pca_df: pd.DataFrame,
     n_pcs: int = 10,
     pc_prefix: str = 'PC',
+    sample_id_col: Optional[str] = None,
     verbose: bool = True
 ) -> pd.DataFrame:
     """
     Attach principal components to phenotype DataFrame.
     
     Args:
-        phenotype_df: Phenotype DataFrame with sample IDs as index
-        pca_df: PCA DataFrame with sample IDs as index and PC columns
+        phenotype_df: Phenotype DataFrame
+        pca_df: PCA DataFrame with IID as index and PC columns
         n_pcs: Number of PCs to attach (will use PC1 to PCn)
         pc_prefix: Prefix for PC column names (default: 'PC')
+        sample_id_col: Column name in phenotype_df to use for matching with PCA IIDs
+                      If None, uses phenotype_df.index
         verbose: Print information about merging
         
     Returns:
@@ -1496,11 +1523,17 @@ def attach_pcs_to_phenotype(
         ValueError: If requested PCs are not available in pca_df
         
     Example:
+        >>> # When phenotype has IID as index
         >>> pheno_df = pd.DataFrame({'age': [25, 30], 'disease': [0, 1]}, 
         ...                         index=['sample1', 'sample2'])
-        >>> pca_df = pd.DataFrame({'PC1': [0.1, -0.1], 'PC2': [0.2, -0.2]},
-        ...                       index=['sample1', 'sample2'])
-        >>> pheno_with_pcs = attach_pcs_to_phenotype(pheno_df, pca_df, n_pcs=2)
+        >>> pca_df = calculate_pca_plink('genotypes')
+        >>> pheno_with_pcs = attach_pcs_to_phenotype(pheno_df, pca_df, n_pcs=10)
+        
+        >>> # When phenotype has IID as a column
+        >>> pheno_df = pd.DataFrame({'IID': ['sample1', 'sample2'], 
+        ...                          'age': [25, 30], 'disease': [0, 1]})
+        >>> pheno_with_pcs = attach_pcs_to_phenotype(pheno_df, pca_df, n_pcs=10, 
+        ...                                          sample_id_col='IID')
     """
     # Check if requested PCs are available
     available_pcs = [col for col in pca_df.columns if col.startswith(pc_prefix)]
@@ -1520,44 +1553,67 @@ def attach_pcs_to_phenotype(
     if missing_pcs:
         raise ValueError(f"Missing PC columns in pca_df: {missing_pcs}")
     
-    pcs_to_add = pca_df[pc_cols]
+    pcs_to_add = pca_df[pc_cols].copy()
     
-    # Find common samples
-    common_samples = phenotype_df.index.intersection(pcs_to_add.index)
+    # Reset PCA index to have IID as a column for merging
+    pcs_to_add['IID'] = pcs_to_add.index.astype(str)
     
-    if len(common_samples) == 0:
-        raise ValueError(
-            "No common samples found between phenotype_df and pca_df. "
-            "Check that index values (sample IDs) match."
-        )
-    
-    if verbose:
-        logger.info(f"Attaching {n_pcs} PCs to phenotype data")
-        logger.info(f"Phenotype samples: {len(phenotype_df)}")
-        logger.info(f"PCA samples: {len(pca_df)}")
-        logger.info(f"Common samples: {len(common_samples)}")
-        
-        if len(common_samples) < len(phenotype_df):
-            n_missing = len(phenotype_df) - len(common_samples)
-            logger.warning(f"{n_missing} samples in phenotype_df have no PCs")
-        
-        if len(common_samples) < len(pca_df):
-            n_extra = len(pca_df) - len(common_samples)
-            logger.warning(f"{n_extra} samples in pca_df are not in phenotype_df")
-    
-    # Merge PCs with phenotype data
-    # Use left join to keep all phenotype samples
+    # Prepare phenotype dataframe for merging
     result_df = phenotype_df.copy()
     
-    for pc_col in pc_cols:
-        result_df[pc_col] = pcs_to_add.loc[result_df.index, pc_col] if pc_col in pcs_to_add.columns else np.nan
+    if sample_id_col is None:
+        # Use index for matching
+        result_df['_merge_id'] = result_df.index.astype(str)
+        original_index = result_df.index
+        use_index = True
+    else:
+        # Use specified column for matching
+        if sample_id_col not in result_df.columns:
+            raise ValueError(f"Column '{sample_id_col}' not found in phenotype_df")
+        result_df['_merge_id'] = result_df[sample_id_col].astype(str)
+        use_index = False
+    
+    # Merge PCs with phenotype data
+    merged_df = result_df.merge(
+        pcs_to_add,
+        left_on='_merge_id',
+        right_on='IID',
+        how='left',
+        suffixes=('', '_pc')
+    )
+    
+    # Drop merge columns
+    merged_df.drop(['_merge_id', 'IID'], axis=1, inplace=True, errors='ignore')
+    
+    # Restore original index if it was used
+    if use_index:
+        merged_df.index = original_index
     
     if verbose:
-        n_missing_pcs = result_df[pc_cols].isna().any(axis=1).sum()
-        if n_missing_pcs > 0:
-            logger.warning(f"{n_missing_pcs} samples have missing PC values")
+        n_pheno_samples = len(phenotype_df)
+        n_pca_samples = len(pca_df)
+        n_with_pcs = merged_df[pc_cols[0]].notna().sum()
+        
+        logger.info(f"Attaching {n_pcs} PCs to phenotype data")
+        logger.info(f"Phenotype samples: {n_pheno_samples}")
+        logger.info(f"PCA samples: {n_pca_samples}")
+        logger.info(f"Samples with PCs after merge: {n_with_pcs}")
+        
+        if n_with_pcs < n_pheno_samples:
+            n_missing = n_pheno_samples - n_with_pcs
+            logger.warning(f"{n_missing} samples in phenotype_df have no PCs (will have NA values)")
+        
+        if n_with_pcs < n_pca_samples:
+            n_extra = n_pca_samples - n_with_pcs
+            logger.info(f"{n_extra} samples in pca_df are not in phenotype_df")
+        
+        # Check for missing values
+        for pc_col in pc_cols:
+            n_missing_pc = merged_df[pc_col].isna().sum()
+            if n_missing_pc > 0:
+                logger.warning(f"{pc_col}: {n_missing_pc} samples with missing values")
     
-    return result_df
+    return merged_df
 
 
 def get_pc_covariate_list(n_pcs: int, pc_prefix: str = 'PC') -> List[str]:
@@ -1618,14 +1674,17 @@ def identify_related_samples(
     n_samples = len(sample_ids)
     related_pairs = []
     
+    # Convert IIDs to strings for consistency
+    iids = sample_ids['IID'].astype(str).values
+    
     # Find pairs above threshold (exclude diagonal)
     for i in range(n_samples):
         for j in range(i + 1, n_samples):
             kinship = grm_matrix[i, j]
             if kinship >= threshold:
                 related_pairs.append({
-                    'IID1': sample_ids.iloc[i]['IID'],
-                    'IID2': sample_ids.iloc[j]['IID'],
+                    'IID1': iids[i],
+                    'IID2': iids[j],
                     'kinship': kinship
                 })
     
@@ -1664,19 +1723,22 @@ def filter_related_samples(
     sample_ids: pd.DataFrame,
     threshold: float = 0.0884,
     method: str = 'greedy',
+    sample_id_col: Optional[str] = None,
     verbose: bool = True
 ) -> pd.DataFrame:
     """
     Filter out related samples to create an unrelated subset.
     
     Args:
-        phenotype_df: Phenotype DataFrame with sample IDs as index
+        phenotype_df: Phenotype DataFrame
         grm_matrix: n_samples x n_samples GRM matrix
         sample_ids: DataFrame with sample IDs (from load_grm_gcta)
         threshold: Relatedness threshold
         method: Method for selecting unrelated samples
                 'greedy': Iteratively remove sample with most relatives
                 'random': Randomly remove one from each related pair
+        sample_id_col: Column name in phenotype_df for sample IDs
+                      If None, uses phenotype_df.index
         verbose: Print filtering information
         
     Returns:
@@ -1744,8 +1806,19 @@ def filter_related_samples(
         raise ValueError(f"Unknown method: {method}. Use 'greedy' or 'random'.")
     
     # Filter phenotype data
-    samples_to_keep = [s for s in phenotype_df.index if s not in samples_to_remove]
-    filtered_df = phenotype_df.loc[samples_to_keep]
+    if sample_id_col is None:
+        # Use index
+        pheno_sample_ids = phenotype_df.index.astype(str)
+        samples_to_keep = [s for s in pheno_sample_ids if s not in samples_to_remove]
+        filtered_df = phenotype_df.loc[samples_to_keep]
+    else:
+        # Use specified column
+        if sample_id_col not in phenotype_df.columns:
+            raise ValueError(f"Column '{sample_id_col}' not found in phenotype_df")
+        
+        pheno_sample_ids = phenotype_df[sample_id_col].astype(str)
+        mask = ~pheno_sample_ids.isin(samples_to_remove)
+        filtered_df = phenotype_df[mask].copy()
     
     if verbose:
         n_filtered = len(filtered_df)
