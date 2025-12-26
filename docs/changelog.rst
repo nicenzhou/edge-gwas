@@ -240,8 +240,8 @@ See Also
 
 * :ref:`installation` - Installation instructions
 * :ref:`quickstart` - Getting started guide
-* GitHub Releases - https://github.com/YOUR-USERNAME/edge-gwas/releases
-* Issue Tracker - https://github.com/YOUR-USERNAME/edge-gwas/issues
+* GitHub Releases - https://github.com/nicenzhou/edge-gwas/releases
+* Issue Tracker - https://github.com/nicenzhou/edge-gwas/issues
 
 ---
 
