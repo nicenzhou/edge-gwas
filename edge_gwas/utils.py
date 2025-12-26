@@ -40,7 +40,7 @@ def load_plink_data(
     G = read_plink1_bin(bed_file, bim_file, fam_file, verbose=verbose)
     
     # Extract genotype matrix
-    genotypes = G.values.T  # Transpose to get samples x variants
+    genotypes = G.values # Transpose to get samples x variants
     sample_ids = G.coords['sample'].values
     variant_ids = G.coords['snp'].values
     
