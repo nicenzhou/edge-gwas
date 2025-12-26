@@ -1656,6 +1656,62 @@ Result Interpretation
    * Q-Q plot should show no systematic deviation
    * Check consistency of α values for nearby SNPs (LD)
 
+Appendix A: Optimization Method Details
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**BFGS Algorithm:**
+
+The Broyden-Fletcher-Goldfarb-Shannon algorithm approximates the Hessian matrix using gradient information:
+
+.. math::
+
+   H_{k+1} = H_k + \frac{y_k y_k^T}{y_k^T s_k} - \frac{H_k s_k s_k^T H_k}{s_k^T H_k s_k}
+
+where:
+
+- :math:`s_k = x_{k+1} - x_k` (step)
+- :math:`y_k = \nabla f(x_{k+1}) - \nabla f(x_k)` (gradient change)
+- :math:`H_k` is the approximate Hessian at iteration k
+
+**Convergence criteria:**
+
+.. math::
+
+   \|\nabla f(x_k)\| < \epsilon \quad \text{or} \quad |f(x_k) - f(x_{k-1})| < \epsilon
+
+Default tolerance: :math:`\epsilon = 10^{-6}`
+
+**L-BFGS Algorithm:**
+
+Limited-memory BFGS stores only m recent vector pairs (typically m=10):
+
+Memory requirement: :math:`O(m \cdot n)` instead of :math:`O(n^2)` for full BFGS
+
+Trade-off: Slightly slower convergence but much lower memory usage
+
+**Newton-Raphson:**
+
+Uses exact Hessian matrix:
+
+.. math::
+
+   x_{k+1} = x_k - H^{-1}(x_k) \nabla f(x_k)
+
+where :math:`H(x_k)` is the true Hessian matrix.
+
+**Convergence rate:** Quadratic (fastest when close to optimum)
+
+**Cost:** Expensive Hessian computation at each iteration
+
+**Nelder-Mead Simplex:**
+
+Derivative-free method using simplex of n+1 points:
+
+Operations: reflection, expansion, contraction, shrinkage
+
+**Pros:** Robust, no gradient needed
+**Cons:** Slow, may not converge for high dimensions
+
 See Also
 --------
 
