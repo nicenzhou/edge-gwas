@@ -5,9 +5,9 @@
    :width: 300px
    :align: left
 
-|
-|
-|
+.. class:: clear
+
+----
 
 Welcome to edge-gwas Documentation
 ===================================
