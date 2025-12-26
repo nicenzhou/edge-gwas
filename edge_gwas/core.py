@@ -30,12 +30,14 @@ class EDGEAnalysis:
         max_iter (int): Maximum iterations for model fitting
         verbose (bool): Whether to print progress messages
         outcome_transform (str): Transformation to apply to continuous outcomes
+        ols_method (str): Optimization method for OLS regression
     """
     
     def __init__(
         self,
         outcome_type: str = 'binary',
         outcome_transform: Optional[str] = None,
+        ols_method: str = 'bfgs',
         n_jobs: int = -1,
         max_iter: int = 1000,
         verbose: bool = True
@@ -51,6 +53,15 @@ class EDGEAnalysis:
                 - 'log10': Log base 10 transformation
                 - 'inverse_normal': Inverse normal transformation (parametric)
                 - 'rank_inverse_normal': Rank-based inverse normal transformation
+            ols_method: Optimization method for OLS regression (default: 'bfgs'):
+                - 'newton': Newton-Raphson algorithm
+                - 'bfgs': Broyden-Fletcher-Goldfarb-Shannon algorithm (default)
+                - 'lbfgs': Limited-memory BFGS algorithm
+                - 'nm': Nelder-Mead algorithm
+                - 'cg': Conjugate Gradient algorithm
+                - 'ncg': Newton Conjugate Gradient algorithm
+                - 'powell': Powell's conjugate direction algorithm
+                - 'basinhopping': Basin-hopping algorithm
             n_jobs: Number of parallel jobs (-1 uses all available cores)
             max_iter: Maximum iterations for model convergence
             verbose: Print progress information
@@ -65,13 +76,21 @@ class EDGEAnalysis:
         if outcome_type == 'binary' and outcome_transform is not None:
             raise ValueError("outcome_transform can only be used with continuous outcomes")
         
+        valid_ols_methods = ['newton', 'bfgs', 'lbfgs', 'nm', 'cg', 'ncg', 'powell', 'basinhopping']
+        if ols_method not in valid_ols_methods:
+            raise ValueError(f"ols_method must be one of {valid_ols_methods}")
+        
         self.outcome_type = outcome_type
         self.outcome_transform = outcome_transform
+        self.ols_method = ols_method
         self.n_jobs = n_jobs
         self.max_iter = max_iter
         self.verbose = verbose
         self.alpha_values = None
         self.skipped_snps = []
+        
+        if self.verbose:
+            logger.info(f"OLS optimization method: {self.ols_method}")
         
     def _transform_outcome(self, y: pd.Series) -> pd.Series:
         """
@@ -247,6 +266,32 @@ class EDGEAnalysis:
             X_transformed = L_inv @ X.values
             
             return y_transformed, X_transformed
+    
+    def _fit_ols_with_method(
+        self,
+        y: np.ndarray,
+        X: np.ndarray
+    ) -> sm.regression.linear_model.RegressionResultsWrapper:
+        """
+        Fit OLS model with specified optimization method.
+        
+        Args:
+            y: Outcome vector
+            X: Design matrix
+            
+        Returns:
+            Fitted OLS model result
+        """
+        model = sm.OLS(y, X)
+        
+        # Fit using the specified optimization method
+        result = model.fit(
+            method=self.ols_method,
+            maxiter=self.max_iter,
+            disp=False
+        )
+        
+        return result
     
     def _fit_logistic_mixed_model(
         self,
@@ -444,9 +489,8 @@ class EDGEAnalysis:
                 try:
                     y_transformed, X_transformed = self._transform_with_grm_linear(y, X, aligned_grm)
                     
-                    # Fit OLS on transformed data
-                    model = sm.OLS(y_transformed, X_transformed)
-                    result = model.fit()
+                    # Fit OLS on transformed data with specified method
+                    result = self._fit_ols_with_method(y_transformed, X_transformed)
                 except Exception as e:
                     logger.warning(f"GRM-based linear model fitting failed for {snp_name}: {str(e)}")
                     self.skipped_snps.append(snp_name)
@@ -488,8 +532,8 @@ class EDGEAnalysis:
                     model = sm.Logit(y, X)
                     result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
                 else:
-                    model = sm.OLS(y, X)
-                    result = model.fit()
+                    # Use specified OLS optimization method
+                    result = self._fit_ols_with_method(y.values, X.values)
             except Exception as e:
                 logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
                 self.skipped_snps.append(snp_name)
@@ -589,9 +633,8 @@ class EDGEAnalysis:
                 try:
                     y_transformed, X_transformed = self._transform_with_grm_linear(y, X, aligned_grm)
                     
-                    # Fit OLS on transformed data
-                    model = sm.OLS(y_transformed, X_transformed)
-                    result = model.fit()
+                    # Fit OLS on transformed data with specified method
+                    result = self._fit_ols_with_method(y_transformed, X_transformed)
                 except Exception as e:
                     logger.warning(f"GRM-based linear model fitting failed for {snp_name}: {str(e)}")
                     self.skipped_snps.append(snp_name)
@@ -633,8 +676,8 @@ class EDGEAnalysis:
                     model = sm.Logit(y, X)
                     result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
                 else:
-                    model = sm.OLS(y, X)
-                    result = model.fit()
+                    # Use specified OLS optimization method
+                    result = self._fit_ols_with_method(y.values, X.values)
             except Exception as e:
                 logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
                 self.skipped_snps.append(snp_name)
@@ -683,7 +726,7 @@ class EDGEAnalysis:
             variant_info: Optional DataFrame with variant information
                          (columns: variant_id, ref_allele, alt_allele)
             grm_matrix: Optional GRM matrix from GCTA (for population structure control)
-            grm_sample_ids: DataFrame with FID and IID corresponding to GRM rows
+            grm_sample_ids: DataFrame with FID and ID corresponding to GRM rows
             
         Returns:
             DataFrame with alpha values for each variant
@@ -778,6 +821,7 @@ class EDGEAnalysis:
             logger.info(f"Skipped {len(self.skipped_snps)} variants due to convergence issues.")
             if self.outcome_transform:
                 logger.info(f"Outcome transformation applied: {self.outcome_transform}")
+            logger.info(f"OLS optimization method used: {self.ols_method}")
         
         return self.alpha_values
     
@@ -892,6 +936,7 @@ class EDGEAnalysis:
             logger.info(f"Skipped {len(self.skipped_snps)} variants.")
             if self.outcome_transform:
                 logger.info(f"Outcome transformation applied: {self.outcome_transform}")
+            logger.info(f"OLS optimization method used: {self.ols_method}")
         
         return gwas_df
     
@@ -931,6 +976,8 @@ class EDGEAnalysis:
         
         if self.outcome_transform:
             logger.info(f"Outcome transformation: {self.outcome_transform}")
+        
+        logger.info(f"OLS optimization method: {self.ols_method}")
         
         # Calculate alpha values on training data
         logger.info("Step 1: Calculating alpha values on training data...")
@@ -987,3 +1034,4 @@ class EDGEAnalysis:
             List of skipped SNP IDs
         """
         return self.skipped_snps
+
