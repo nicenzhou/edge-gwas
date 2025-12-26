@@ -1,5 +1,4 @@
-rst
-Copy code
+
 Welcome to edge-gwas Documentation
 ===================================
 
