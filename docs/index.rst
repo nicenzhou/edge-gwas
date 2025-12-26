@@ -75,8 +75,8 @@ Quick Start
 Support
 -------
 
-* **Issues**: `GitHub Issues <https://github.com/YOUR-USERNAME/edge-gwas/issues>`_
-* **Discussions**: `GitHub Discussions <https://github.com/YOUR-USERNAME/edge-gwas/discussions>`_
+* **Issues**: `GitHub Issues <https://github.com/nicenzhou/edge-gwas/issues>`_
+* **Discussions**: `GitHub Discussions <https://github.com/nicenzhou/edge-gwas/discussions>`_
 * **Code Questions**: jyzhou@stanford.edu
 * **Research Questions**: molly.hall@pennmedicine.upenn.edu
 
