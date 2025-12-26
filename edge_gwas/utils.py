@@ -39,8 +39,8 @@ def load_plink_data(
     # Read PLINK data
     G = read_plink1_bin(bed_file, bim_file, fam_file, verbose=verbose)
     
-    # Extract genotype matrix (NO TRANSPOSE)
-    genotypes = G.values 
+    # Extract genotype matrix 
+    genotypes = G.values.T 
     sample_ids = G.coords['sample'].values
     variant_ids = G.coords['snp'].values
     
