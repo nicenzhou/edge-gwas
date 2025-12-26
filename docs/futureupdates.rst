@@ -5,6 +5,35 @@ Advanced Topics for Further Updates
 
 This guide covers potential troubleshooting walkthroughs in edge-gwas.
 
+Extensions and Future Directions
+---------------------------------
+
+Planned Features
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. **Gene-based testing**: Aggregate SNPs within genes
+2. **Mixed models**: Account for relatedness and population structure
+3. **X chromosome**: Proper handling of X-linked inheritance
+4. **Rare variant analysis**: Optimized methods for MAF < 0.01
+5. **Meta-analysis tools**: Combine α estimates across studies
+6. **GPU acceleration**: Faster computation for biobank-scale data
+7. **Additional transformations**: Box-Cox, Yeo-Johnson
+8. **Adaptive method selection**: Automatically choose best optimization method
+9. **Interactive optimization**: Real-time convergence monitoring
+10. **Batch effect correction**: Built-in adjustments for technical covariates
+
+Research Directions
+~~~~~~~~~~~~~~~~~~~
+
+* **Optimal splitting ratio**: Beyond 50/50 for different scenarios
+* **Cross-validation**: Stability of α across folds
+* **Bayesian EDGE**: Prior distributions on α
+* **Multi-trait EDGE**: Joint analysis of related phenotypes
+* **Gene-environment interaction**: EDGE with interaction terms
+* **Optimization method benchmarking**: Systematic comparison across data types
+* **Transformation selection**: Automated selection of optimal transformation
+* **Non-linear relationships**: Spline-based EDGE encoding
+
 Advanced Topics
 ---------------
 
