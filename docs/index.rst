@@ -5,14 +5,14 @@
    :width: 300px
    :align: left
 
-.. class:: clear
+.. raw:: html
+
+   <div style="clear: both;"></div>
 
 ----
 
 Welcome to edge-gwas Documentation
 ===================================
-
-
 
 **EDGE-GWAS** (Elastic Data-Driven Encoding GWAS) identifies nonadditive SNP effects 
 using flexible genetic encoding, rather than assuming additive inheritance.
