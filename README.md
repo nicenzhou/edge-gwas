@@ -132,7 +132,7 @@ alpha_df, gwas_df = edge.run_full_analysis(
 )
 ```
 
-**More examples:** [Complete Workflows](https://edge-gwas.readthedocs.io/en/v0.1.1/examples.html)
+**More examples:** [Complete Workflows](https://edge-gwas.readthedocs.io/en/latest/examples.html)
 
 ## Statistical Model
 
@@ -152,7 +152,7 @@ $$\alpha = \frac{\beta_{Het}}{\beta_{Hom}}$$
 - **α ≈ 1**: Dominant (heterozygotes = homozygotes)
 - **α < 0 or α > 1**: Over-dominance/under-recessiveness
 
-**Learn more:** [Statistical Model Documentation](https://edge-gwas.readthedocs.io/en/v0.1.1/statistical_model.html)
+**Learn more:** [Statistical Model Documentation](https://edge-gwas.readthedocs.io/en/latest/statistical_model.html)
 
 ## What's New in v0.1.1
 
@@ -197,64 +197,22 @@ $$\alpha = \frac{\beta_{Het}}{\beta_{Hom}}$$
 - `edge-gwas-install-tools` - Interactive tool installer
 - `edge-gwas-check-tools` - Verify tool installation
 
-### Migration from v0.1.0
-
-**Replace Koalas with pandas:**
-
-```python
-# OLD (v0.1.0)
-import databricks.koalas as ks
-df = data.to_koalas()
-
-# NEW (v0.1.1)
-import pandas as pd
-df = data  # Already pandas
-```
-
-**Use new population structure functions:**
-
-```python
-# Calculate PCA
-pca_df = calculate_pca_plink('data', n_pcs=10)
-pheno = attach_pcs_to_phenotype(pheno, pca_df, n_pcs=10)
-
-# Use in analysis
-covariates = ['age', 'sex'] + get_pc_covariate_list(10)
-```
-
 ## Documentation
 
-**Complete documentation:** https://edge-gwas.readthedocs.io/en/v0.1.1/
+**Complete documentation:** https://edge-gwas.readthedocs.io/
 
-- [Installation Guide](https://edge-gwas.readthedocs.io/en/v0.1.1/installation.html)
-- [Quick Start Tutorial](https://edge-gwas.readthedocs.io/en/v0.1.1/quickstart.html)
-- [User Guide](https://edge-gwas.readthedocs.io/en/v0.1.1/user_guide.html)
-- [API Reference](https://edge-gwas.readthedocs.io/en/v0.1.1/api_reference.html)
-- [Example Workflows](https://edge-gwas.readthedocs.io/en/v0.1.1/examples.html)
-- [Statistical Model](https://edge-gwas.readthedocs.io/en/v0.1.1/statistical_model.html)
-- [Changelog](https://edge-gwas.readthedocs.io/en/v0.1.1/changelog.html)
-
-## External Tools
-
-EDGE-GWAS integrates with external tools (installed automatically via `edge-gwas-install-tools`):
-
-**PLINK2:**
-- Fast PCA calculation and LD pruning
-- Download: https://www.cog-genomics.org/plink/2.0/
-
-**GCTA:**
-- Genetic relationship matrix calculation
-- Download: https://yanglab.westlake.edu.cn/software/gcta/
-
-**R + GENESIS:**
-- PC-AiR for relatedness-aware PCA
-- R packages: GENESIS, SNPRelate, gdsfmt
-
-**Verify installation:**
-
-```bash
-edge-gwas-check-tools
-```
+- [Installation Guide](https://edge-gwas.readthedocs.io/en/latest/installation.html) - Installation instructions and requirements
+- [Quick Start Tutorial](https://edge-gwas.readthedocs.io/en/latest/quickstart.html) - Getting started with EDGE in 5 minutes
+- [User Guide](https://edge-gwas.readthedocs.io/en/latest/user_guide.html) - Comprehensive user guide and tutorials
+- [API Reference](https://edge-gwas.readthedocs.io/en/latest/api_reference.html) - Complete API documentation
+- [Example Workflows](https://edge-gwas.readthedocs.io/en/latest/examples.html) - Real-world analysis examples
+- [Statistical Model](https://edge-gwas.readthedocs.io/en/latest/statistical_model.html) - Mathematical background and methods
+- [Visualization Guide](https://edge-gwas.readthedocs.io/en/latest/visualization.html) - Creating publication-ready plots
+- [Troubleshooting](https://edge-gwas.readthedocs.io/en/latest/troubleshooting.html) - Common issues and solutions
+- [FAQ](https://edge-gwas.readthedocs.io/en/latest/faq.html) - Frequently asked questions
+- [Citation Guide](https://edge-gwas.readthedocs.io/en/latest/citation.html) - How to cite EDGE
+- [Changelog](https://edge-gwas.readthedocs.io/en/latest/changelog.html) - Version history and updates
+- [Future Updates](https://edge-gwas.readthedocs.io/en/latest/futureupdates.html) - Planned features and roadmap
 
 ## System Requirements
 
@@ -298,6 +256,28 @@ Install optional dependencies:
 pip install pgenlib bgen-reader cyvcf2
 ```
 
+## External Tools
+
+EDGE-GWAS integrates with external tools (installed automatically via `edge-gwas-install-tools`):
+
+**PLINK2:**
+- Fast PCA calculation and LD pruning
+- Download: https://www.cog-genomics.org/plink/2.0/
+
+**GCTA:**
+- Genetic relationship matrix calculation
+- Download: https://yanglab.westlake.edu.cn/software/gcta/
+
+**R + GENESIS:**
+- PC-AiR for relatedness-aware PCA
+- R packages: GENESIS, SNPRelate, gdsfmt
+
+**Verify installation:**
+
+```bash
+edge-gwas-check-tools
+```
+
 ## Citation
 
 If you use edge-gwas in your research, please cite:
@@ -330,7 +310,7 @@ If you use edge-gwas in your research, please cite:
 - Cross-validation and additive GWAS comparison
 - Automated tool installation system
 
-### v0.1.0 (2025-12-24)
+### v0.1.0 (2025-12-24 - Deprecated)
 - Initial packaged release
 - Two-stage EDGE analysis framework
 - Support for binary and continuous outcomes
@@ -345,17 +325,7 @@ If you use edge-gwas in your research, please cite:
 
 **Migrate to v0.1.1 for continued support**
 
-
 ## Support
-
-**Documentation:**
-- Main docs: https://edge-gwas.readthedocs.io/
-- API Reference: https://edge-gwas.readthedocs.io/en/v0.1.1/api_reference.html
-- Examples: https://edge-gwas.readthedocs.io/en/v0.1.1/examples.html
-
-**Get Help:**
-- GitHub Issues: https://github.com/nicenzhou/edge-gwas/issues
-- GitHub Discussions: https://github.com/nicenzhou/edge-gwas/discussions
 
 **Contact:**
 - **Code questions:** Jiayan Zhou - jyzhou@stanford.edu
@@ -366,12 +336,6 @@ If you use edge-gwas in your research, please cite:
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 [![GPL Logo](https://www.gnu.org/graphics/gplv3-88x31.png)](https://www.gnu.org/licenses/gpl-3.0)
-
-## Acknowledgments
-
-- Original EDGE method development: Jiayan Zhou, Molly Hall, and collaborators
-- Built with support from pandas-plink, scikit-learn, and statsmodels
-- External tools: PLINK2 (Chang et al.), GCTA (Yang et al.), GENESIS (Gogarten et al.)
 
 ---
 
