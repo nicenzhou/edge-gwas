@@ -1,7 +1,4 @@
-"""
-Check if external tools are properly installed.
-"""
-
+"""Check if external tools are properly installed."""
 import subprocess
 import sys
 
@@ -129,7 +126,7 @@ def main():
         print("  - GRM calculation with GCTA")
         print("  - PC-AiR analysis with R/GENESIS")
     else:
-        print("✗ Some tools or packages are missing")
+        print("⚠ Some tools or packages are missing")
         print("\nMissing components will limit functionality:")
         
         if not plink2_ok:
