@@ -59,6 +59,7 @@ __all__ = [
     'filter_samples_by_call_rate',
     'calculate_hwe_pvalues',
     'filter_variants_by_hwe',
+    'download_test_files',
     
     # Population structure
     'calculate_pca_sklearn',
