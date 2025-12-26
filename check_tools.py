@@ -28,6 +28,9 @@ def check_tool(name, command, version_flag='--version'):
     except subprocess.TimeoutExpired:
         print(f"✗ {name}: Timeout")
         return False
+    except Exception as e:
+        print(f"✗ {name}: Error - {e}")
+        return False
 
 
 def check_r_package(package_name):
@@ -54,6 +57,9 @@ def check_r_package(package_name):
     except subprocess.TimeoutExpired:
         print(f"✗ R package {package_name}: Timeout")
         return False
+    except Exception as e:
+        print(f"✗ R package {package_name}: Error - {e}")
+        return False
 
 
 def main():
@@ -75,7 +81,10 @@ def main():
     
     for package in python_packages:
         try:
-            __import__(package)
+            if package == 'sklearn':
+                __import__('sklearn')
+            else:
+                __import__(package)
             print(f"✓ {package}: Installed")
         except ImportError:
             print(f"✗ {package}: Not installed")
@@ -115,4 +124,30 @@ def main():
     if core_ok and all_ok:
         print("✓ All tools and packages are properly installed!")
         print("\nYou can now use all EDGE-GWAS features including:")
-        print("  - Basic
+        print("  - Basic EDGE analysis")
+        print("  - PCA calculation with PLINK2")
+        print("  - GRM calculation with GCTA")
+        print("  - PC-AiR analysis with R/GENESIS")
+    else:
+        print("✗ Some tools or packages are missing")
+        print("\nMissing components will limit functionality:")
+        
+        if not plink2_ok:
+            print("  - PLINK2: Cannot use calculate_pca_plink()")
+        if not gcta_ok:
+            print("  - GCTA: Cannot use calculate_grm_gcta()")
+        if not (r_ok and genesis_ok and snprelate_ok and gdsfmt_ok):
+            print("  - R/GENESIS: Cannot use calculate_pca_pcair()")
+        
+        print("\nTo install missing tools, run:")
+        print("  edge-gwas-install-tools")
+        print("\nOr install manually following the guide at:")
+        print("  https://github.com/nicenzhou/edge-gwas/blob/main/INSTALL.md")
+    
+    print("="*70 + "\n")
+    
+    return 0 if (core_ok and all_ok) else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
