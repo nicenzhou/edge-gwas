@@ -314,128 +314,128 @@ class ExternalToolsInstaller:
                 raise
     
     def _install_gcta_version(self, url, extract_dir, arch_type):
-    """Install a specific GCTA version."""
-    zip_path = self.bin_dir / 'gcta.zip'
-    print(f"  Downloading from {url}...")
-    
-    try:
-        self.download_file(url, zip_path)
-    except Exception as e:
-        print(f"\n  Download failed: {e}")
-        raise
-    
-    print(f"  Extracting...")
-    try:
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            # List contents for debugging
-            contents = zip_ref.namelist()
-            print(f"    Archive contains {len(contents)} files")
-            zip_ref.extractall(self.bin_dir)
-    except zipfile.BadZipFile as e:
-        print(f"  Error: Invalid zip file")
-        print(f"  File size: {zip_path.stat().st_size} bytes")
-        zip_path.unlink(missing_ok=True)
-        raise Exception(f"Invalid zip file: {e}")
-    
-    # Look for the binary in the extracted directory
-    # Try multiple possible binary locations and names
-    possible_binaries = [
-        # ARM64 version has bin/gcta64
-        self.bin_dir / extract_dir / 'bin' / 'gcta64',
-        # Root directory locations
-        self.bin_dir / extract_dir / 'gcta64',
-        self.bin_dir / extract_dir / 'gcta-1.94.1',  # macOS x86_64
-        self.bin_dir / extract_dir / 'gcta-1.95.0',
-        self.bin_dir / extract_dir / 'gcta',
-        self.bin_dir / extract_dir / 'gcta_1.94.1',
-        self.bin_dir / extract_dir / 'gcta_1.95.0',
-    ]
-    
-    source_binary = None
-    for candidate in possible_binaries:
-        if candidate.exists() and candidate.is_file():
-            # Check if it's actually an executable binary (not a text file)
-            try:
-                # Try to read first few bytes
-                with open(candidate, 'rb') as f:
-                    header = f.read(4)
-                    # Check for ELF magic number (Linux) or Mach-O (macOS)
-                    # Mach-O: \xfe\xed\xfa\xce (32-bit), \xfe\xed\xfa\xcf (64-bit)
-                    # Mach-O (reverse): \xce\xfa\xed\xfe, \xcf\xfa\xed\xfe
-                    # ELF: \x7fELF
-                    if header[:4] in [b'\x7fELF', b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', 
-                                     b'\xfe\xed\xfa\xce', b'\xfe\xed\xfa\xcf']:
-                        source_binary = candidate
-                        print(f"    Found binary: {candidate.relative_to(self.bin_dir)}")
-                        break
-            except Exception as e:
-                continue
-    
-    if not source_binary:
-        # Debug: show what was extracted
-        print(f"  Debug: Looking for binary in {extract_dir}")
-        if (self.bin_dir / extract_dir).exists():
-            print(f"  Contents of {extract_dir}:")
-            for item in (self.bin_dir / extract_dir).iterdir():
-                if item.is_file():
-                    size = item.stat().st_size
-                    print(f"    - {item.name} (file, {size:,} bytes)")
-                elif item.is_dir():
-                    print(f"    - {item.name}/ (dir)")
-                    # If it's a bin directory, show its contents
-                    if item.name == 'bin':
-                        print(f"      Contents of bin/:")
-                        for subitem in item.iterdir():
-                            if subitem.is_file():
-                                subsize = subitem.stat().st_size
-                                print(f"        - {subitem.name} (file, {subsize:,} bytes)")
-        else:
-            print(f"  Directory not found: {extract_dir}")
-            print(f"  Available directories in {self.bin_dir}:")
-            for item in self.bin_dir.iterdir():
-                if item.is_dir() and 'gcta' in item.name.lower():
-                    print(f"    - {item.name}")
+        """Install a specific GCTA version."""
+        zip_path = self.bin_dir / 'gcta.zip'
+        print(f"  Downloading from {url}...")
         
-        # Clean up before raising exception
-        zip_path.unlink(missing_ok=True)
+        try:
+            self.download_file(url, zip_path)
+        except Exception as e:
+            print(f"\n  Download failed: {e}")
+            raise
+        
+        print(f"  Extracting...")
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                # List contents for debugging
+                contents = zip_ref.namelist()
+                print(f"    Archive contains {len(contents)} files")
+                zip_ref.extractall(self.bin_dir)
+        except zipfile.BadZipFile as e:
+            print(f"  Error: Invalid zip file")
+            print(f"  File size: {zip_path.stat().st_size} bytes")
+            zip_path.unlink(missing_ok=True)
+            raise Exception(f"Invalid zip file: {e}")
+        
+        # Look for the binary in the extracted directory
+        # Try multiple possible binary locations and names
+        possible_binaries = [
+            # ARM64 version has bin/gcta64
+            self.bin_dir / extract_dir / 'bin' / 'gcta64',
+            # Root directory locations
+            self.bin_dir / extract_dir / 'gcta64',
+            self.bin_dir / extract_dir / 'gcta-1.94.1',  # macOS x86_64
+            self.bin_dir / extract_dir / 'gcta-1.95.0',
+            self.bin_dir / extract_dir / 'gcta',
+            self.bin_dir / extract_dir / 'gcta_1.94.1',
+            self.bin_dir / extract_dir / 'gcta_1.95.0',
+        ]
+        
+        source_binary = None
+        for candidate in possible_binaries:
+            if candidate.exists() and candidate.is_file():
+                # Check if it's actually an executable binary (not a text file)
+                try:
+                    # Try to read first few bytes
+                    with open(candidate, 'rb') as f:
+                        header = f.read(4)
+                        # Check for ELF magic number (Linux) or Mach-O (macOS)
+                        # Mach-O: \xfe\xed\xfa\xce (32-bit), \xfe\xed\xfa\xcf (64-bit)
+                        # Mach-O (reverse): \xce\xfa\xed\xfe, \xcf\xfa\xed\xfe
+                        # ELF: \x7fELF
+                        if header[:4] in [b'\x7fELF', b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', 
+                                         b'\xfe\xed\xfa\xce', b'\xfe\xed\xfa\xcf']:
+                            source_binary = candidate
+                            print(f"    Found binary: {candidate.name}")
+                            break
+                except Exception:
+                    continue
+        
+        if not source_binary:
+            # Debug: show what was extracted
+            print(f"  Debug: Looking for binary in {extract_dir}")
+            if (self.bin_dir / extract_dir).exists():
+                print(f"  Contents of {extract_dir}:")
+                for item in (self.bin_dir / extract_dir).iterdir():
+                    if item.is_file():
+                        size = item.stat().st_size
+                        print(f"    - {item.name} (file, {size:,} bytes)")
+                    elif item.is_dir():
+                        print(f"    - {item.name}/ (dir)")
+                        # If it's a bin directory, show its contents
+                        if item.name == 'bin':
+                            print(f"      Contents of bin/:")
+                            for subitem in item.iterdir():
+                                if subitem.is_file():
+                                    subsize = subitem.stat().st_size
+                                    print(f"        - {subitem.name} (file, {subsize:,} bytes)")
+            else:
+                print(f"  Directory not found: {extract_dir}")
+                print(f"  Available directories in {self.bin_dir}:")
+                for item in self.bin_dir.iterdir():
+                    if item.is_dir() and 'gcta' in item.name.lower():
+                        print(f"    - {item.name}")
+            
+            # Clean up before raising exception
+            zip_path.unlink(missing_ok=True)
+            shutil.rmtree(self.bin_dir / extract_dir, ignore_errors=True)
+            raise Exception(f"GCTA binary not found in extracted directory")
+        
+        dest_binary = self.bin_dir / 'gcta64'
+        
+        print(f"  Moving {source_binary.name} to {dest_binary.name}")
+        
+        # Remove existing binary if present
+        if dest_binary.exists():
+            dest_binary.unlink()
+        
+        shutil.move(str(source_binary), str(dest_binary))
+        dest_binary.chmod(0o755)
+        
+        # Clean up
         shutil.rmtree(self.bin_dir / extract_dir, ignore_errors=True)
-        raise Exception(f"GCTA binary not found in extracted directory")
-    
-    dest_binary = self.bin_dir / 'gcta64'
-    
-    print(f"  Moving {source_binary.name} to {dest_binary.name}")
-    
-    # Remove existing binary if present
-    if dest_binary.exists():
-        dest_binary.unlink()
-    
-    shutil.move(str(source_binary), str(dest_binary))
-    dest_binary.chmod(0o755)
-    
-    # Clean up
-    shutil.rmtree(self.bin_dir / extract_dir, ignore_errors=True)
-    zip_path.unlink(missing_ok=True)
-    
-    # Verify installation
-    try:
-        result = subprocess.run([str(dest_binary), '--version'], 
-                              capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            version_info = result.stdout.strip().split('\n')[0]
-            print(f"  ✓ GCTA installed successfully ({arch_type}): {version_info}")
-        else:
-            print(f"  ⚠ GCTA installed but verification failed")
-            print(f"     Return code: {result.returncode}")
-            if result.stderr:
-                print(f"     Error: {result.stderr[:200]}")
-    except OSError as e:
-        if 'Exec format error' in str(e):
-            print(f"  ✗ Error: This binary is not compatible with your system")
-            print(f"     Binary type mismatch (wrong architecture)")
-            dest_binary.unlink()  # Remove the incompatible binary
-            raise Exception("Incompatible binary format")
-        else:
-            print(f"  ⚠ GCTA installed at {dest_binary} (verification skipped: {e})")
+        zip_path.unlink(missing_ok=True)
+        
+        # Verify installation
+        try:
+            result = subprocess.run([str(dest_binary), '--version'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                version_info = result.stdout.strip().split('\n')[0]
+                print(f"  ✓ GCTA installed successfully ({arch_type}): {version_info}")
+            else:
+                print(f"  ⚠ GCTA installed but verification failed")
+                print(f"     Return code: {result.returncode}")
+                if result.stderr:
+                    print(f"     Error: {result.stderr[:200]}")
+        except OSError as e:
+            if 'Exec format error' in str(e):
+                print(f"  ✗ Error: This binary is not compatible with your system")
+                print(f"     Binary type mismatch (wrong architecture)")
+                dest_binary.unlink()  # Remove the incompatible binary
+                raise Exception("Incompatible binary format")
+            else:
+                print(f"  ⚠ GCTA installed at {dest_binary} (verification skipped: {e})")
     
     def install_r_packages(self):
         """Install R packages for PC-AiR."""
