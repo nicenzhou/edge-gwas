@@ -172,28 +172,23 @@ class ExternalToolsInstaller:
             print("\nAvailable GCTA versions for macOS:")
             print("  1. ARM64 (M1/M2/M3 Macs - native, v1.95.0)")
             print("  2. x86_64 (Intel Macs or Rosetta 2 - stable, v1.94.1)")
-            print("  3. Linux version (fallback - works via compatibility)")
             
             if self.machine == 'arm64':
                 print("\nRecommended: Option 1 (ARM64) for native performance")
-                print("Note: If option 1 fails, will automatically try Linux version")
                 default = '1'
             else:
                 print("\nRecommended: Option 2 (x86_64)")
-                print("Note: If option 2 fails, will automatically try Linux version")
                 default = '2'
             
-            choice = input(f"\nSelect version [1/2/3, default={default}]: ").strip()
+            choice = input(f"\nSelect version [1/2, default={default}]: ").strip()
             
             if not choice:
                 choice = default
             
             if choice == '1':
                 return 'arm64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-macOS-arm64.zip', 'gcta-1.95.0-macOS-arm64'
-            elif choice == '2':
-                return 'x86_64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-macOS-x86_64.zip', 'gcta-1.94.1-macOS-x86_64'
             else:
-                return 'linux', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-linux-kernel-3-x86_64.zip', 'gcta-1.95.0-linux-kernel-3-x86_64'
+                return 'x86_64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-MacOS-x86_64.zip', 'gcta-1.94.1-MacOS-x86_64'
     
     def install_all(self):
         """Install all external tools."""
@@ -290,28 +285,15 @@ class ExternalToolsInstaller:
             url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip'
             extract_dir = 'gcta-1.94.1-linux-kernel-3-x86_64'
             arch_type = 'linux'
-            use_fallback = False
         elif self.system == 'Darwin':  # macOS
             arch_type, url, extract_dir = self.choose_mac_architecture("GCTA")
             print(f"  Selected: GCTA macOS {arch_type}")
-            use_fallback = (arch_type != 'linux')  # Only use fallback if not already Linux version
         else:
             print(f"  GCTA auto-installation not supported on {self.system}")
             raise Exception(f"Unsupported OS: {self.system}")
         
-        # Try the selected version
-        try:
-            self._install_gcta_version(url, extract_dir, arch_type)
-        except Exception as e:
-            if use_fallback and self.system == 'Darwin':
-                print(f"\n  macOS version failed: {e}")
-                print(f"  Trying Linux version as fallback...")
-                # Fallback to Linux version
-                fallback_url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip'
-                fallback_dir = 'gcta-1.94.1-linux-kernel-3-x86_64'
-                self._install_gcta_version(fallback_url, fallback_dir, 'linux-fallback')
-            else:
-                raise
+        # Install the selected version
+        self._install_gcta_version(url, extract_dir, arch_type)
     
     def _install_gcta_version(self, url, extract_dir, arch_type):
         """Install a specific GCTA version."""
@@ -420,12 +402,18 @@ class ExternalToolsInstaller:
         try:
             result = subprocess.run([str(dest_binary), '--version'], 
                                   capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                version_info = result.stdout.strip().split('\n')[0]
+            # GCTA might return code 1 even on successful --version
+            output = result.stdout + result.stderr
+            if result.returncode == 0 or 'GCTA' in output or 'gcta' in output.lower():
+                # Extract version info from output
+                version_lines = [line for line in output.split('\n') if line.strip()]
+                version_info = version_lines[0] if version_lines else "installed"
                 print(f"  ✓ GCTA installed successfully ({arch_type}): {version_info}")
             else:
                 print(f"  ⚠ GCTA installed but verification failed")
                 print(f"     Return code: {result.returncode}")
+                if result.stdout:
+                    print(f"     Output: {result.stdout[:200]}")
                 if result.stderr:
                     print(f"     Error: {result.stderr[:200]}")
         except OSError as e:
