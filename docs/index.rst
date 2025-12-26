@@ -31,9 +31,9 @@ Key Features
 ------------
 
 * **Two-stage analysis**: Calculate alpha on training data, apply to test data
-* **Flexible encoding**: Detects recessive, additive, dominant, and over-dominant effects
+* **Flexible encoding**: Detects under-recessive, recessive, additive, dominant, and over-dominant effects
 * **Multiple outcomes**: Binary and quantitative traits
-* **PLINK support**: Native .bed/.bim/.fam format
+* **Multiple genotype formats**: PLINK binary (.bed/.bim/.fam), PLINK2 (.pgen/.pvar/.psam), BGEN, and VCF/VCF.GZ files
 * **Visualization**: Manhattan, QQ, and alpha distribution plots
 
 Quick Start
