@@ -470,7 +470,8 @@ def stratified_train_test_split(
     else:
         raise ValueError(
             f"Column '{geno_id_col}' not found in genotype DataFrame. "
-            f"Available columns: {genotype_df.columns.tolist()}"
+            f"Available columns: {genotype_df.columns.tolist()}, "
+            f"Index name: {genotype_df.index.name}"
         )
     
     # Get sample identifiers from phenotype DataFrame
@@ -486,7 +487,8 @@ def stratified_train_test_split(
     else:
         raise ValueError(
             f"Column '{pheno_id_col}' not found in phenotype DataFrame. "
-            f"Available columns: {phenotype_df.columns.tolist()}"
+            f"Available columns: {phenotype_df.columns.tolist()}, "
+            f"Index name: {phenotype_df.index.name}"
         )
     
     # Get common samples
@@ -517,19 +519,45 @@ def stratified_train_test_split(
         phenotype_df_subset = phenotype_df[phenotype_df[pheno_id_col].isin(common_samples)].copy()
         phenotype_df_subset = phenotype_df_subset.set_index(pheno_id_col)
     
+    # Ensure indices are aligned
+    genotype_df_subset = genotype_df_subset.loc[common_samples]
+    phenotype_df_subset = phenotype_df_subset.loc[common_samples]
+    
     # Stratify if binary outcome
     if is_binary:
         stratify = phenotype_df_subset[outcome_col]
+        # Check if we have enough samples in each class for stratification
+        value_counts = stratify.value_counts()
+        if any(value_counts < 2):
+            logger.warning(
+                f"Some classes have fewer than 2 samples. "
+                f"Class distribution: {value_counts.to_dict()}. "
+                f"Stratification may fail."
+            )
     else:
         stratify = None
     
     # Split samples
-    train_idx, test_idx = train_test_split(
-        common_samples,
-        test_size=test_size,
-        random_state=random_state,
-        stratify=stratify
-    )
+    try:
+        train_idx, test_idx = train_test_split(
+            common_samples,
+            test_size=test_size,
+            random_state=random_state,
+            stratify=stratify
+        )
+    except ValueError as e:
+        if stratify is not None:
+            logger.warning(
+                f"Stratification failed: {e}. Falling back to random split without stratification."
+            )
+            train_idx, test_idx = train_test_split(
+                common_samples,
+                test_size=test_size,
+                random_state=random_state,
+                stratify=None
+            )
+        else:
+            raise
     
     # Split data
     train_geno = genotype_df_subset.loc[train_idx]
@@ -543,8 +571,8 @@ def stratified_train_test_split(
     if is_binary and stratify is not None:
         train_cases = train_pheno[outcome_col].sum()
         test_cases = test_pheno[outcome_col].sum()
-        logger.info(f"Training cases/controls: {train_cases}/{len(train_idx)-train_cases}")
-        logger.info(f"Test cases/controls: {test_cases}/{len(test_idx)-test_cases}")
+        logger.info(f"Training cases/controls: {int(train_cases)}/{len(train_idx)-int(train_cases)}")
+        logger.info(f"Test cases/controls: {int(test_cases)}/{len(test_idx)-int(test_cases)}")
     
     return train_geno, test_geno, train_pheno, test_pheno
 
