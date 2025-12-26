@@ -3,9 +3,9 @@ from setuptools import setup, find_packages
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-# All dependencies including optional ones
+# Read all dependencies from single requirements.txt
 with open("requirements.txt", "r", encoding="utf-8") as fh:
-    requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
+    requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#") and not line.startswith("=")]
 
 setup(
     name="edge-gwas",
@@ -37,15 +37,6 @@ setup(
     ],
     python_requires=">=3.7",
     install_requires=requirements,
-    extras_require={
-        "dev": [
-            "pytest>=6.2.0",
-            "pytest-cov>=2.12.0",
-            "black>=21.0",
-            "flake8>=3.9.0",
-            "isort>=5.9.0",
-        ],
-    },
     keywords=[
         "gwas", 
         "genomics", 
