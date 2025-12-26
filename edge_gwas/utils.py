@@ -52,7 +52,7 @@ def load_plink_data(
     # Create DataFrame: variants as rows, samples as columns
     # Then transpose to get samples as rows, variants as columns
     genotype_df = pd.DataFrame(
-        genotypes,  # Transpose HERE in the DataFrame constructor
+        genotypes,  
         index=pd.Index(sample_ids, name='sample_id'),
         columns=pd.Index(variant_ids, name='variant_id')
     )
