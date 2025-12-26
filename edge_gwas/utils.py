@@ -914,3 +914,845 @@ def cross_validated_edge_analysis(
     logger.info(f"Mean alpha std across variants: {avg_alpha['alpha_std'].mean():.3f}")
     
     return avg_alpha, meta_gwas_df, combined_alpha, combined_gwas
+
+
+def calculate_pca_sklearn(
+    genotype_df: pd.DataFrame,
+    n_pcs: int = 10,
+    verbose: bool = True
+) -> pd.DataFrame:
+    """
+    Calculate principal components using scikit-learn (basic PCA without relatedness correction).
+    
+    Args:
+        genotype_df: Genotype DataFrame (samples x variants)
+        n_pcs: Number of principal components to calculate
+        verbose: Print progress information
+        
+    Returns:
+        DataFrame with sample IDs as index and PC1, PC2, ..., PCn as columns
+        
+    Note:
+        This is a basic PCA without correction for relatedness.
+        For more robust PCA accounting for relatedness, use calculate_pca_plink().
+    """
+    from sklearn.decomposition import PCA
+    from sklearn.impute import SimpleImputer
+    
+    if verbose:
+        logger.info(f"Calculating {n_pcs} principal components using scikit-learn...")
+    
+    # Impute missing values with mean
+    imputer = SimpleImputer(strategy='mean')
+    genotype_imputed = imputer.fit_transform(genotype_df.values)
+    
+    # Standardize genotypes (mean=0, std=1)
+    genotype_std = (genotype_imputed - genotype_imputed.mean(axis=0)) / (genotype_imputed.std(axis=0) + 1e-10)
+    
+    # Calculate PCA
+    pca = PCA(n_components=n_pcs)
+    pcs = pca.fit_transform(genotype_std)
+    
+    # Create DataFrame
+    pc_cols = [f'PC{i+1}' for i in range(n_pcs)]
+    pca_df = pd.DataFrame(
+        pcs,
+        index=genotype_df.index,
+        columns=pc_cols
+    )
+    
+    if verbose:
+        logger.info(f"Explained variance ratio: {pca.explained_variance_ratio_[:5]}")
+        logger.info(f"Total variance explained by {n_pcs} PCs: {pca.explained_variance_ratio_.sum():.3f}")
+    
+    return pca_df
+
+
+def calculate_pca_plink(
+    plink_prefix: str,
+    n_pcs: int = 10,
+    output_prefix: Optional[str] = None,
+    maf_threshold: float = 0.01,
+    ld_window: int = 50,
+    ld_step: int = 5,
+    ld_r2: float = 0.2,
+    approx: bool = False,
+    approx_samples: int = 5000,
+    verbose: bool = True
+) -> pd.DataFrame:
+    """
+    Calculate principal components using PLINK2.
+    
+    Args:
+        plink_prefix: Prefix for PLINK binary files (.bed/.bim/.fam)
+        n_pcs: Number of principal components to calculate
+        output_prefix: Prefix for output files (default: temp directory)
+        maf_threshold: MAF threshold for variant filtering
+        ld_window: Window size for LD pruning (in kb)
+        ld_step: Step size for LD pruning
+        ld_r2: R² threshold for LD pruning
+        approx: Use approximate PCA for large cohorts (faster, recommended for >5000 samples)
+        approx_samples: Number of samples to use for approximate PCA
+        verbose: Print progress information
+        
+    Returns:
+        DataFrame with sample IDs as index and PC1, PC2, ..., PCn as columns
+        
+    Note:
+        Requires PLINK2 to be installed and available in PATH.
+        Download from: https://www.cog-genomics.org/plink/2.0/
+        
+        For large cohorts (>5000 samples), use approx=True for faster computation.
+        The approximate method computes PCs on a subset of samples and projects
+        the remaining samples onto these PCs.
+    """
+    import subprocess
+    import tempfile
+    import shutil
+    
+    # Create temporary directory if no output prefix specified
+    if output_prefix is None:
+        temp_dir = tempfile.mkdtemp()
+        output_prefix = os.path.join(temp_dir, 'pca')
+        cleanup = True
+    else:
+        temp_dir = None
+        cleanup = False
+    
+    try:
+        if verbose:
+            method = "approximate" if approx else "exact"
+            logger.info(f"Calculating {n_pcs} PCs using PLINK2 ({method} method)...")
+            logger.info(f"MAF threshold: {maf_threshold}, LD pruning: r²<{ld_r2}")
+            if approx:
+                logger.info(f"Using {approx_samples} samples for approximate PCA")
+        
+        # Step 1: LD pruning
+        prune_prefix = f"{output_prefix}_pruned"
+        cmd_prune = [
+            'plink2',
+            '--bfile', plink_prefix,
+            '--maf', str(maf_threshold),
+            '--indep-pairwise', f'{ld_window}kb', str(ld_step), str(ld_r2),
+            '--out', prune_prefix
+        ]
+        
+        if verbose:
+            logger.info("Step 1: LD pruning...")
+        
+        result = subprocess.run(cmd_prune, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"PLINK2 LD pruning failed:\n{result.stderr}")
+        
+        # Step 2: Calculate PCA
+        if approx:
+            # Use approximate PCA for large cohorts
+            cmd_pca = [
+                'plink2',
+                '--bfile', plink_prefix,
+                '--extract', f'{prune_prefix}.prune.in',
+                '--pca', 'approx', str(n_pcs),
+                '--pca-sample-ct', str(approx_samples),
+                '--out', output_prefix
+            ]
+        else:
+            # Use exact PCA
+            cmd_pca = [
+                'plink2',
+                '--bfile', plink_prefix,
+                '--extract', f'{prune_prefix}.prune.in',
+                '--pca', str(n_pcs),
+                '--out', output_prefix
+            ]
+        
+        if verbose:
+            logger.info("Step 2: Calculating PCA...")
+        
+        result = subprocess.run(cmd_pca, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"PLINK2 PCA calculation failed:\n{result.stderr}")
+        
+        # Read eigenvec file
+        eigenvec_file = f"{output_prefix}.eigenvec"
+        pca_df = pd.read_csv(eigenvec_file, sep='\s+', header=None)
+        
+        # Set column names
+        # PLINK2 format: #FID IID PC1 PC2 ... PCn
+        pca_df.columns = ['FID', 'IID'] + [f'PC{i+1}' for i in range(n_pcs)]
+        pca_df.set_index('IID', inplace=True)
+        pca_df.drop('FID', axis=1, inplace=True)
+        
+        # Read eigenval file for variance explained
+        if verbose:
+            eigenval_file = f"{output_prefix}.eigenval"
+            if os.path.exists(eigenval_file):
+                eigenvals = pd.read_csv(eigenval_file, header=None).values.flatten()
+                total_var = eigenvals.sum()
+                var_explained = eigenvals / total_var
+                logger.info(f"Variance explained by first 5 PCs: {var_explained[:5]}")
+                logger.info(f"Total variance explained by {n_pcs} PCs: {var_explained.sum():.3f}")
+        
+        if verbose:
+            logger.info(f"PCA calculation complete. Found {len(pca_df)} samples.")
+        
+        return pca_df
+        
+    finally:
+        # Clean up temporary directory
+        if cleanup and temp_dir is not None:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def calculate_pca_pcair(
+    plink_prefix: str,
+    n_pcs: int = 10,
+    kinship_matrix: Optional[str] = None,
+    divergence_matrix: Optional[str] = None,
+    output_prefix: Optional[str] = None,
+    kin_threshold: float = 0.0884,
+    div_threshold: float = -0.0884,
+    maf_threshold: float = 0.01,
+    verbose: bool = True
+) -> pd.DataFrame:
+    """
+    Calculate PC-AiR (Principal Components - Analysis in Related samples).
+    
+    PC-AiR is a method for computing principal components that accounts for 
+    relatedness and ancestry in genetic data. It identifies an ancestry 
+    representative subset of unrelated samples and uses this subset to 
+    compute ancestry informative PCs.
+    
+    Args:
+        plink_prefix: Prefix for PLINK binary files (.bed/.bim/.fam)
+        n_pcs: Number of principal components to calculate
+        kinship_matrix: Path to kinship matrix file (GCTA GRM format prefix)
+                       If None, will compute using calculate_grm_gcta()
+        divergence_matrix: Path to divergence matrix file (optional)
+        output_prefix: Prefix for output files (default: temp directory)
+        kin_threshold: Kinship threshold for defining relatedness (default: 0.0884, ~ 2nd degree)
+        div_threshold: Divergence threshold (default: -0.0884)
+        maf_threshold: MAF threshold for GRM calculation (if kinship_matrix is None)
+        verbose: Print progress information
+        
+    Returns:
+        DataFrame with sample IDs as index and PC1, PC2, ..., PCn as columns
+        
+    Note:
+        Requires R with GENESIS package installed:
+        ```R
+        if (!requireNamespace("BiocManager", quietly = TRUE))
+            install.packages("BiocManager")
+        BiocManager::install("GENESIS")
+        BiocManager::install("SNPRelate")
+        BiocManager::install("gdsfmt")
+        ```
+        
+    Reference:
+        Conomos et al. (2015) Genetic Epidemiology
+        https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4608645/
+    """
+    import subprocess
+    import tempfile
+    import shutil
+    
+    # Create temporary directory if no output prefix specified
+    if output_prefix is None:
+        temp_dir = tempfile.mkdtemp()
+        output_prefix = os.path.join(temp_dir, 'pcair')
+        cleanup = True
+    else:
+        temp_dir = None
+        cleanup = False
+    
+    try:
+        if verbose:
+            logger.info(f"Calculating {n_pcs} PCs using PC-AiR...")
+            logger.info(f"Kinship threshold: {kin_threshold}, Divergence threshold: {div_threshold}")
+        
+        # If kinship matrix not provided, calculate using GCTA
+        if kinship_matrix is None:
+            if verbose:
+                logger.info("Calculating kinship matrix using GCTA...")
+            kinship_matrix = calculate_grm_gcta(
+                plink_prefix=plink_prefix,
+                output_prefix=f"{output_prefix}_grm",
+                maf_threshold=maf_threshold,
+                verbose=verbose
+            )
+        
+        # Create R script for PC-AiR
+        r_script = f"""
+# Load required libraries
+suppressPackageStartupMessages({{
+    library(GENESIS)
+    library(SNPRelate)
+    library(gdsfmt)
+}})
+
+# Convert PLINK to GDS format
+snpgdsBED2GDS(
+    bed.fn = "{plink_prefix}.bed",
+    bim.fn = "{plink_prefix}.bim", 
+    fam.fn = "{plink_prefix}.fam",
+    out.gdsfn = "{output_prefix}.gds"
+)
+
+# Open GDS file
+gds <- snpgdsOpen("{output_prefix}.gds")
+
+# Load kinship matrix from GCTA format
+# Read GRM binary file
+grm_bin <- file("{kinship_matrix}.grm.bin", "rb")
+grm_n_file <- file("{kinship_matrix}.grm.N.bin", "rb")
+
+# Read sample IDs
+sample_ids <- read.table("{kinship_matrix}.grm.id", header=FALSE, stringsAsFactors=FALSE)
+n_samples <- nrow(sample_ids)
+
+# Read number of values (lower triangle including diagonal)
+n_values <- n_samples * (n_samples + 1) / 2
+
+# Read GRM values
+grm_values <- readBin(grm_bin, what="numeric", n=n_values, size=4)
+close(grm_bin)
+close(grm_n_file)
+
+# Reconstruct full symmetric matrix
+kin_matrix <- matrix(0, nrow=n_samples, ncol=n_samples)
+idx <- 1
+for(i in 1:n_samples) {{
+    for(j in 1:i) {{
+        kin_matrix[i,j] <- grm_values[idx]
+        kin_matrix[j,i] <- grm_values[idx]
+        idx <- idx + 1
+    }}
+}}
+
+rownames(kin_matrix) <- sample_ids$V2
+colnames(kin_matrix) <- sample_ids$V2
+
+# Run PC-AiR
+cat("Running PC-AiR analysis...\\n")
+pc_air <- pcair(
+    gds = gds,
+    kinobj = kin_matrix,
+    kin.thresh = {kin_threshold},
+    divobj = NULL,
+    div.thresh = {div_threshold},
+    num.cores = 1
+)
+
+# Extract PCs
+pcs <- pc_air$vectors[, 1:{n_pcs}, drop=FALSE]
+colnames(pcs) <- paste0("PC", 1:{n_pcs})
+
+# Save results
+output_df <- data.frame(
+    IID = rownames(pcs),
+    pcs,
+    stringsAsFactors = FALSE
+)
+
+write.table(
+    output_df,
+    file = "{output_prefix}_pcair.txt",
+    quote = FALSE,
+    row.names = FALSE,
+    sep = "\\t"
+)
+
+# Save variance explained
+write.table(
+    data.frame(variance = pc_air$values[1:{n_pcs}]),
+    file = "{output_prefix}_variance.txt",
+    quote = FALSE,
+    row.names = FALSE,
+    sep = "\\t"
+)
+
+# Save unrelated set
+write.table(
+    data.frame(IID = pc_air$unrels),
+    file = "{output_prefix}_unrelated.txt",
+    quote = FALSE,
+    row.names = FALSE,
+    sep = "\\t"
+)
+
+cat("PC-AiR complete.\\n")
+cat(paste("Unrelated samples:", length(pc_air$unrels), "\\n"))
+cat(paste("Related samples:", length(pc_air$rels), "\\n"))
+
+# Close GDS
+snpgdsClose(gds)
+"""
+        
+        # Write R script to file
+        r_script_file = f"{output_prefix}_pcair.R"
+        with open(r_script_file, 'w') as f:
+            f.write(r_script)
+        
+        # Run R script
+        if verbose:
+            logger.info("Running PC-AiR in R (this may take a while)...")
+        
+        result = subprocess.run(
+            ['Rscript', r_script_file],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode != 0:
+            raise RuntimeError(f"PC-AiR calculation failed:\n{result.stderr}\n{result.stdout}")
+        
+        # Read results
+        pca_file = f"{output_prefix}_pcair.txt"
+        if not os.path.exists(pca_file):
+            raise RuntimeError(f"PC-AiR output file not found: {pca_file}")
+        
+        pca_df = pd.read_csv(pca_file, sep='\t')
+        pca_df.set_index('IID', inplace=True)
+        
+        # Read variance explained
+        if verbose:
+            variance_file = f"{output_prefix}_variance.txt"
+            if os.path.exists(variance_file):
+                variance = pd.read_csv(variance_file, sep='\t')
+                total_var = variance['variance'].sum()
+                var_explained = variance['variance'] / total_var
+                logger.info(f"Variance explained by first 5 PCs: {var_explained[:5].values}")
+                logger.info(f"Total variance explained by {n_pcs} PCs: {var_explained.sum():.3f}")
+            
+            # Read unrelated samples info
+            unrelated_file = f"{output_prefix}_unrelated.txt"
+            if os.path.exists(unrelated_file):
+                unrelated_df = pd.read_csv(unrelated_file, sep='\t')
+                logger.info(f"Number of unrelated samples: {len(unrelated_df)}")
+                logger.info(f"Total samples: {len(pca_df)}")
+        
+        return pca_df
+        
+    finally:
+        # Clean up temporary directory
+        if cleanup and temp_dir is not None:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def calculate_grm_gcta(
+    plink_prefix: str,
+    output_prefix: Optional[str] = None,
+    maf_threshold: float = 0.01,
+    method: str = 'grm',
+    max_threads: int = 1,
+    verbose: bool = True
+) -> str:
+    """
+    Calculate genetic relationship matrix (GRM) using GCTA.
+    
+    Args:
+        plink_prefix: Prefix for PLINK binary files (.bed/.bim/.fam)
+        output_prefix: Prefix for output GRM files (default: temp directory)
+        maf_threshold: MAF threshold for variant filtering
+        method: GRM calculation method ('grm' for full, 'grm-sparse' for sparse)
+        max_threads: Maximum number of threads to use
+        verbose: Print progress information
+        
+    Returns:
+        Path to output GRM prefix (files will be prefix.grm.bin, prefix.grm.N.bin, prefix.grm.id)
+        
+    Note:
+        Requires GCTA to be installed and available in PATH.
+        Download from: https://yanglab.westlake.edu.cn/software/gcta/
+        
+    Output files:
+        - prefix.grm.bin: GRM values (lower triangle, binary format)
+        - prefix.grm.N.bin: Number of SNPs used for each pair
+        - prefix.grm.id: Sample IDs (FID and IID)
+    """
+    import subprocess
+    import tempfile
+    
+    # Determine GCTA command (gcta64 or gcta)
+    gcta_cmd = 'gcta64'
+    test_result = subprocess.run(['which', 'gcta64'], capture_output=True)
+    if test_result.returncode != 0:
+        gcta_cmd = 'gcta'
+    
+    # Create temporary directory if no output prefix specified
+    if output_prefix is None:
+        temp_dir = tempfile.mkdtemp()
+        output_prefix = os.path.join(temp_dir, 'grm')
+    
+    if verbose:
+        logger.info(f"Calculating GRM using GCTA (method: {method})...")
+        logger.info(f"MAF threshold: {maf_threshold}, Threads: {max_threads}")
+    
+    # Build GCTA command
+    cmd = [
+        gcta_cmd,
+        '--bfile', plink_prefix,
+        '--make-' + method,
+        '--maf', str(maf_threshold),
+        '--thread-num', str(max_threads),
+        '--out', output_prefix
+    ]
+    
+    # Run GCTA
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        raise RuntimeError(f"GCTA GRM calculation failed:\n{result.stderr}")
+    
+    if verbose:
+        logger.info(f"GRM calculation complete. Output: {output_prefix}.grm.*")
+    
+    return output_prefix
+
+
+def load_grm_gcta(grm_prefix: str, verbose: bool = True) -> Tuple[np.ndarray, pd.DataFrame]:
+    """
+    Load GRM calculated by GCTA.
+    
+    Args:
+        grm_prefix: Prefix for GRM files (without .grm.bin extension)
+        verbose: Print loading information
+        
+    Returns:
+        Tuple of (grm_matrix, sample_ids_df)
+        - grm_matrix: n_samples x n_samples symmetric GRM matrix
+        - sample_ids_df: DataFrame with FID and IID columns
+        
+    Raises:
+        FileNotFoundError: If GRM files are not found
+    """
+    grm_bin_file = f"{grm_prefix}.grm.bin"
+    grm_n_file = f"{grm_prefix}.grm.N.bin"
+    grm_id_file = f"{grm_prefix}.grm.id"
+    
+    # Check files exist
+    for f in [grm_bin_file, grm_n_file, grm_id_file]:
+        if not os.path.exists(f):
+            raise FileNotFoundError(f"GRM file not found: {f}")
+    
+    if verbose:
+        logger.info(f"Loading GRM from {grm_prefix}...")
+    
+    # Load sample IDs
+    sample_ids = pd.read_csv(grm_id_file, sep='\t', header=None, names=['FID', 'IID'])
+    n_samples = len(sample_ids)
+    
+    # Load GRM values (lower triangle)
+    grm_values = np.fromfile(grm_bin_file, dtype=np.float32)
+    
+    # Expected number of values in lower triangle (including diagonal)
+    expected_n = n_samples * (n_samples + 1) // 2
+    
+    if len(grm_values) != expected_n:
+        raise ValueError(
+            f"GRM file has {len(grm_values)} values, "
+            f"expected {expected_n} for {n_samples} samples"
+        )
+    
+    # Reconstruct full symmetric matrix
+    grm_matrix = np.zeros((n_samples, n_samples), dtype=np.float32)
+    
+    idx = 0
+    for i in range(n_samples):
+        for j in range(i + 1):
+            grm_matrix[i, j] = grm_values[idx]
+            grm_matrix[j, i] = grm_values[idx]  # Symmetric
+            idx += 1
+    
+    if verbose:
+        logger.info(f"Loaded {n_samples} x {n_samples} GRM matrix")
+        logger.info(f"Mean diagonal: {np.diag(grm_matrix).mean():.3f}")
+        off_diag_mean = (grm_matrix.sum() - np.trace(grm_matrix)) / (n_samples * (n_samples - 1))
+        logger.info(f"Mean off-diagonal: {off_diag_mean:.6f}")
+    
+    return grm_matrix, sample_ids
+
+
+def attach_pcs_to_phenotype(
+    phenotype_df: pd.DataFrame,
+    pca_df: pd.DataFrame,
+    n_pcs: int = 10,
+    pc_prefix: str = 'PC',
+    verbose: bool = True
+) -> pd.DataFrame:
+    """
+    Attach principal components to phenotype DataFrame.
+    
+    Args:
+        phenotype_df: Phenotype DataFrame with sample IDs as index
+        pca_df: PCA DataFrame with sample IDs as index and PC columns
+        n_pcs: Number of PCs to attach (will use PC1 to PCn)
+        pc_prefix: Prefix for PC column names (default: 'PC')
+        verbose: Print information about merging
+        
+    Returns:
+        Phenotype DataFrame with PC columns added
+        
+    Raises:
+        ValueError: If requested PCs are not available in pca_df
+        
+    Example:
+        >>> pheno_df = pd.DataFrame({'age': [25, 30], 'disease': [0, 1]}, 
+        ...                         index=['sample1', 'sample2'])
+        >>> pca_df = pd.DataFrame({'PC1': [0.1, -0.1], 'PC2': [0.2, -0.2]},
+        ...                       index=['sample1', 'sample2'])
+        >>> pheno_with_pcs = attach_pcs_to_phenotype(pheno_df, pca_df, n_pcs=2)
+    """
+    # Check if requested PCs are available
+    available_pcs = [col for col in pca_df.columns if col.startswith(pc_prefix)]
+    max_available = len(available_pcs)
+    
+    if n_pcs > max_available:
+        raise ValueError(
+            f"Requested {n_pcs} PCs, but only {max_available} are available in pca_df. "
+            f"Available PC columns: {available_pcs}"
+        )
+    
+    # Select requested PCs
+    pc_cols = [f'{pc_prefix}{i+1}' for i in range(n_pcs)]
+    
+    # Check all requested PCs exist
+    missing_pcs = [pc for pc in pc_cols if pc not in pca_df.columns]
+    if missing_pcs:
+        raise ValueError(f"Missing PC columns in pca_df: {missing_pcs}")
+    
+    pcs_to_add = pca_df[pc_cols]
+    
+    # Find common samples
+    common_samples = phenotype_df.index.intersection(pcs_to_add.index)
+    
+    if len(common_samples) == 0:
+        raise ValueError(
+            "No common samples found between phenotype_df and pca_df. "
+            "Check that index values (sample IDs) match."
+        )
+    
+    if verbose:
+        logger.info(f"Attaching {n_pcs} PCs to phenotype data")
+        logger.info(f"Phenotype samples: {len(phenotype_df)}")
+        logger.info(f"PCA samples: {len(pca_df)}")
+        logger.info(f"Common samples: {len(common_samples)}")
+        
+        if len(common_samples) < len(phenotype_df):
+            n_missing = len(phenotype_df) - len(common_samples)
+            logger.warning(f"{n_missing} samples in phenotype_df have no PCs")
+        
+        if len(common_samples) < len(pca_df):
+            n_extra = len(pca_df) - len(common_samples)
+            logger.warning(f"{n_extra} samples in pca_df are not in phenotype_df")
+    
+    # Merge PCs with phenotype data
+    # Use left join to keep all phenotype samples
+    result_df = phenotype_df.copy()
+    
+    for pc_col in pc_cols:
+        result_df[pc_col] = pcs_to_add.loc[result_df.index, pc_col] if pc_col in pcs_to_add.columns else np.nan
+    
+    if verbose:
+        n_missing_pcs = result_df[pc_cols].isna().any(axis=1).sum()
+        if n_missing_pcs > 0:
+            logger.warning(f"{n_missing_pcs} samples have missing PC values")
+    
+    return result_df
+
+
+def get_pc_covariate_list(n_pcs: int, pc_prefix: str = 'PC') -> List[str]:
+    """
+    Generate list of PC covariate names for use in EDGE analysis.
+    
+    Args:
+        n_pcs: Number of PCs
+        pc_prefix: Prefix for PC column names (default: 'PC')
+        
+    Returns:
+        List of PC column names ['PC1', 'PC2', ..., 'PCn']
+        
+    Example:
+        >>> pc_list = get_pc_covariate_list(5)
+        >>> print(pc_list)
+        ['PC1', 'PC2', 'PC3', 'PC4', 'PC5']
+        
+        >>> # Use in EDGE analysis
+        >>> covariates = ['age', 'sex'] + get_pc_covariate_list(10)
+        >>> alpha_df, gwas_df = edge.run_full_analysis(
+        ...     train_g, train_p, test_g, test_p,
+        ...     outcome='disease',
+        ...     covariates=covariates
+        ... )
+    """
+    return [f'{pc_prefix}{i+1}' for i in range(n_pcs)]
+
+
+def identify_related_samples(
+    grm_matrix: np.ndarray,
+    sample_ids: pd.DataFrame,
+    threshold: float = 0.0884,
+    verbose: bool = True
+) -> pd.DataFrame:
+    """
+    Identify pairs of related samples based on GRM threshold.
+    
+    Args:
+        grm_matrix: n_samples x n_samples GRM matrix
+        sample_ids: DataFrame with sample IDs (from load_grm_gcta)
+        threshold: Relatedness threshold (default: 0.0884 ~ 2nd degree relatives)
+                  Common thresholds:
+                  - 0.354: 1st degree (parent-offspring, full siblings)
+                  - 0.177: 2nd degree (half-siblings, grandparent-grandchild)
+                  - 0.0884: 3rd degree (first cousins)
+        verbose: Print summary statistics
+        
+    Returns:
+        DataFrame with columns: IID1, IID2, kinship
+        Sorted by kinship (descending)
+        
+    Example:
+        >>> grm_matrix, sample_ids = load_grm_gcta('output/grm')
+        >>> related_pairs = identify_related_samples(grm_matrix, sample_ids, threshold=0.177)
+        >>> print(f"Found {len(related_pairs)} related pairs")
+    """
+    n_samples = len(sample_ids)
+    related_pairs = []
+    
+    # Find pairs above threshold (exclude diagonal)
+    for i in range(n_samples):
+        for j in range(i + 1, n_samples):
+            kinship = grm_matrix[i, j]
+            if kinship >= threshold:
+                related_pairs.append({
+                    'IID1': sample_ids.iloc[i]['IID'],
+                    'IID2': sample_ids.iloc[j]['IID'],
+                    'kinship': kinship
+                })
+    
+    # Create DataFrame and sort by kinship
+    related_df = pd.DataFrame(related_pairs)
+    
+    if len(related_df) > 0:
+        related_df = related_df.sort_values('kinship', ascending=False)
+    
+    if verbose:
+        logger.info(f"Relatedness threshold: {threshold}")
+        logger.info(f"Found {len(related_df)} related pairs out of {n_samples * (n_samples - 1) // 2} possible pairs")
+        
+        if len(related_df) > 0:
+            logger.info(f"Maximum kinship: {related_df['kinship'].max():.4f}")
+            logger.info(f"Mean kinship (related pairs): {related_df['kinship'].mean():.4f}")
+            
+            # Count by degree of relatedness
+            first_degree = (related_df['kinship'] >= 0.354).sum()
+            second_degree = ((related_df['kinship'] >= 0.177) & (related_df['kinship'] < 0.354)).sum()
+            third_degree = ((related_df['kinship'] >= 0.0884) & (related_df['kinship'] < 0.177)).sum()
+            
+            if first_degree > 0:
+                logger.info(f"  1st degree relatives: {first_degree} pairs")
+            if second_degree > 0:
+                logger.info(f"  2nd degree relatives: {second_degree} pairs")
+            if third_degree > 0:
+                logger.info(f"  3rd degree relatives: {third_degree} pairs")
+    
+    return related_df
+
+
+def filter_related_samples(
+    phenotype_df: pd.DataFrame,
+    grm_matrix: np.ndarray,
+    sample_ids: pd.DataFrame,
+    threshold: float = 0.0884,
+    method: str = 'greedy',
+    verbose: bool = True
+) -> pd.DataFrame:
+    """
+    Filter out related samples to create an unrelated subset.
+    
+    Args:
+        phenotype_df: Phenotype DataFrame with sample IDs as index
+        grm_matrix: n_samples x n_samples GRM matrix
+        sample_ids: DataFrame with sample IDs (from load_grm_gcta)
+        threshold: Relatedness threshold
+        method: Method for selecting unrelated samples
+                'greedy': Iteratively remove sample with most relatives
+                'random': Randomly remove one from each related pair
+        verbose: Print filtering information
+        
+    Returns:
+        Filtered phenotype DataFrame with unrelated samples only
+        
+    Example:
+        >>> grm_matrix, sample_ids = load_grm_gcta('output/grm')
+        >>> unrelated_pheno = filter_related_samples(
+        ...     phenotype_df, grm_matrix, sample_ids, threshold=0.0884
+        ... )
+    """
+    # Get related pairs
+    related_df = identify_related_samples(
+        grm_matrix, sample_ids, threshold=threshold, verbose=False
+    )
+    
+    n_original = len(phenotype_df)
+    
+    if len(related_df) == 0:
+        if verbose:
+            logger.info("No related samples found. Returning original phenotype data.")
+        return phenotype_df.copy()
+    
+    # Get set of all samples involved in relatedness
+    all_related = set(related_df['IID1']).union(set(related_df['IID2']))
+    
+    if method == 'greedy':
+        # Greedy algorithm: iteratively remove sample with most relatives
+        samples_to_remove = set()
+        remaining_pairs = related_df.copy()
+        
+        while len(remaining_pairs) > 0:
+            # Count how many times each sample appears
+            sample_counts = pd.concat([
+                remaining_pairs['IID1'],
+                remaining_pairs['IID2']
+            ]).value_counts()
+            
+            # Remove sample with most relatives
+            sample_to_remove = sample_counts.index[0]
+            samples_to_remove.add(sample_to_remove)
+            
+            # Remove all pairs involving this sample
+            remaining_pairs = remaining_pairs[
+                (remaining_pairs['IID1'] != sample_to_remove) &
+                (remaining_pairs['IID2'] != sample_to_remove)
+            ]
+        
+    elif method == 'random':
+        # Random method: randomly choose one from each pair
+        samples_to_remove = set()
+        
+        for _, row in related_df.iterrows():
+            iid1, iid2 = row['IID1'], row['IID2']
+            
+            # Skip if already removed
+            if iid1 in samples_to_remove or iid2 in samples_to_remove:
+                continue
+            
+            # Randomly choose one to remove
+            to_remove = np.random.choice([iid1, iid2])
+            samples_to_remove.add(to_remove)
+    
+    else:
+        raise ValueError(f"Unknown method: {method}. Use 'greedy' or 'random'.")
+    
+    # Filter phenotype data
+    samples_to_keep = [s for s in phenotype_df.index if s not in samples_to_remove]
+    filtered_df = phenotype_df.loc[samples_to_keep]
+    
+    if verbose:
+        n_filtered = len(filtered_df)
+        n_removed = n_original - n_filtered
+        logger.info(f"Filtered related samples using '{method}' method")
+        logger.info(f"Original samples: {n_original}")
+        logger.info(f"Related samples removed: {n_removed}")
+        logger.info(f"Unrelated samples remaining: {n_filtered} ({n_filtered/n_original*100:.1f}%)")
+    
+    return filtered_df
