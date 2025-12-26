@@ -3,8 +3,8 @@ EDGE-GWAS: Encoding for Detecting Genetic Effects in GWAS
 """
 
 __version__ = "0.1.1"
-__author__ = "Your Name"
-__email__ = "your.email@example.com"
+__author__ = "Jiayan Zhou"
+__email__ = "jyzhou@stanford.edu"
 
 # Import main classes
 from .core import EDGEAnalysis
