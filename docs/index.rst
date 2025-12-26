@@ -5,6 +5,10 @@
    :width: 300px
    :align: left
 
+|
+|
+|
+
 Welcome to edge-gwas Documentation
 ===================================
 
