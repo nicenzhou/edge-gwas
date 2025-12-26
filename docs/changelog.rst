@@ -242,3 +242,9 @@ See Also
 * :ref:`quickstart` - Getting started guide
 * GitHub Releases - https://github.com/YOUR-USERNAME/edge-gwas/releases
 * Issue Tracker - https://github.com/YOUR-USERNAME/edge-gwas/issues
+
+---
+
+*Last updated: 2025-12-25 for edge-gwas v0.1.1*
+
+*For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues
