@@ -12,12 +12,15 @@ def check_tool(name, command, version_flag='--version'):
             text=True,
             timeout=10
         )
-        if result.returncode == 0:
-            version = result.stdout.strip().split('\n')[0]
+        # GCTA might return non-zero on --version, but still outputs version info
+        output = result.stdout + result.stderr
+        if result.returncode == 0 or ('GCTA' in output or 'gcta' in output.lower() or 'PLINK' in output):
+            version_lines = [line for line in output.split('\n') if line.strip()]
+            version = version_lines[0] if version_lines else f"installed (rc={result.returncode})"
             print(f"✓ {name}: {version}")
             return True
         else:
-            print(f"✗ {name}: Installed but returned error")
+            print(f"✗ {name}: Installed but returned error (rc={result.returncode})")
             return False
     except FileNotFoundError:
         print(f"✗ {name}: Not found")
@@ -94,7 +97,18 @@ def main():
     print("-" * 70)
     
     plink2_ok = check_tool('PLINK2', 'plink2')
-    gcta_ok = check_tool('GCTA', 'gcta64') or check_tool('GCTA', 'gcta')
+    
+    # Try gcta64 first (installed name), then gcta (alternative/system name)
+    gcta_ok = False
+    gcta64_result = check_tool('GCTA', 'gcta64')
+    if gcta64_result:
+        gcta_ok = True
+    else:
+        # Try alternative name
+        print("  Trying alternative command 'gcta'...")
+        gcta_result = check_tool('GCTA (alternative)', 'gcta')
+        if gcta_result:
+            gcta_ok = True
     
     print()
     
