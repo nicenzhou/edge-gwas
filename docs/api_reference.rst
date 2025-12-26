@@ -192,6 +192,97 @@ Load genotype data from PLINK binary files.
   * ``genotype_df``: Genotype matrix (samples × variants)
   * ``variant_info``: Variant information (chr, pos, ref, alt)
 
+load_pgen_data()
+""""""""""""""""
+
+Load PLINK 2 binary format data (.pgen/.pvar/.psam).
+
+.. code-block:: python
+
+   from edge_gwas.utils import load_pgen_data
+   
+   genotype_df, variant_info = load_pgen_data(
+       pgen_file='data.pgen',
+       pvar_file='data.pvar',
+       psam_file='data.psam',
+       verbose=True
+   )
+
+**Parameters:**
+
+* ``pgen_file`` (str): Path to .pgen file
+* ``pvar_file`` (str): Path to .pvar file  
+* ``psam_file`` (str): Path to .psam file
+* ``verbose`` (bool): Print loading information
+
+**Returns:**
+
+* ``tuple``: (genotype_df, variant_info)
+
+**Note:**
+
+Requires ``pgenlib`` package: ``pip install pgenlib``
+
+load_bgen_data()
+""""""""""""""""
+
+Load BGEN format data with dosages.
+
+.. code-block:: python
+
+   from edge_gwas.utils import load_bgen_data
+   
+   genotype_df, variant_info = load_bgen_data(
+       bgen_file='data.bgen',
+       sample_file='data.sample',  # Optional
+       verbose=True
+   )
+
+**Parameters:**
+
+* ``bgen_file`` (str): Path to .bgen file
+* ``sample_file`` (str, optional): Path to .sample file (optional if embedded)
+* ``verbose`` (bool): Print loading information
+
+**Returns:**
+
+* ``tuple``: (genotype_df, variant_info)
+  
+  * Genotypes are dosages (0-2 continuous values)
+
+**Note:**
+
+Requires ``bgen-reader`` package: ``pip install bgen-reader``
+
+load_vcf_data()
+"""""""""""""""
+
+Load VCF/VCF.GZ format data.
+
+.. code-block:: python
+
+   from edge_gwas.utils import load_vcf_data
+   
+   genotype_df, variant_info = load_vcf_data(
+       vcf_file='data.vcf.gz',
+       dosage=True,    # Use DS field if available
+       verbose=True
+   )
+
+**Parameters:**
+
+* ``vcf_file`` (str): Path to .vcf or .vcf.gz file
+* ``dosage`` (bool): If True, use dosages (DS field); if False, use hard calls (GT field)
+* ``verbose`` (bool): Print loading information
+
+**Returns:**
+
+* ``tuple``: (genotype_df, variant_info)
+
+**Note:**
+
+Requires ``cyvcf2`` package: ``pip install cyvcf2``
+
 prepare_phenotype_data()
 """"""""""""""""""""""""
 
@@ -307,6 +398,142 @@ Filter variants by missingness rate.
 
 * ``pandas.DataFrame``: Filtered genotype data
 
+filter_samples_by_call_rate()
+"""""""""""""""""""""""""""""
+
+Filter samples by genotype call rate.
+
+.. code-block:: python
+
+   from edge_gwas.utils import filter_samples_by_call_rate
+   
+   filtered_geno, filtered_pheno = filter_samples_by_call_rate(
+       genotype_df,
+       phenotype_df,
+       min_call_rate=0.95,
+       verbose=True
+   )
+
+**Parameters:**
+
+* ``genotype_df`` (pandas.DataFrame): Genotype data
+* ``phenotype_df`` (pandas.DataFrame): Phenotype data
+* ``min_call_rate`` (float): Minimum call rate (proportion of non-missing genotypes)
+* ``verbose`` (bool): Print filtering information
+
+**Returns:**
+
+* ``tuple``: (filtered_genotype_df, filtered_phenotype_df)
+
+**Example:**
+
+.. code-block:: python
+
+   # Remove samples with >5% missing genotypes
+   geno, pheno = filter_samples_by_call_rate(geno, pheno, min_call_rate=0.95)
+
+filter_variants_by_hwe()
+""""""""""""""""""""""""
+
+Filter variants by Hardy-Weinberg Equilibrium p-value.
+
+.. code-block:: python
+
+   from edge_gwas.utils import filter_variants_by_hwe
+   
+   filtered_geno = filter_variants_by_hwe(
+       genotype_df,
+       hwe_threshold=1e-6,
+       verbose=True
+   )
+
+**Parameters:**
+
+* ``genotype_df`` (pandas.DataFrame): Genotype data
+* ``hwe_threshold`` (float): Minimum HWE p-value threshold
+* ``verbose`` (bool): Print filtering information
+
+**Returns:**
+
+* ``pandas.DataFrame``: Filtered genotype data
+
+**Example:**
+
+.. code-block:: python
+
+   # Filter variants deviating from HWE
+   geno = filter_variants_by_hwe(geno, hwe_threshold=1e-6)
+
+check_case_control_balance()
+""""""""""""""""""""""""""""
+
+Check case/control balance in binary outcome.
+
+.. code-block:: python
+
+   from edge_gwas.utils import check_case_control_balance
+   
+   balance = check_case_control_balance(
+       phenotype_df,
+       outcome_col='disease',
+       verbose=True
+   )
+
+**Parameters:**
+
+* ``phenotype_df`` (pandas.DataFrame): Phenotype data
+* ``outcome_col`` (str): Name of outcome column
+* ``verbose`` (bool): Print balance information
+
+**Returns:**
+
+* ``dict``: Dictionary with keys:
+  
+  * ``case_count`` (int): Number of cases
+  * ``control_count`` (int): Number of controls  
+  * ``ratio`` (float): Case/control ratio
+
+**Example:**
+
+.. code-block:: python
+
+   balance = check_case_control_balance(pheno, 'disease')
+   print(f"Cases: {balance['case_count']}, Controls: {balance['control_count']}")
+   print(f"Ratio: {balance['ratio']:.2f}")
+
+calculate_hwe_pvalues()
+"""""""""""""""""""""""
+
+Calculate Hardy-Weinberg Equilibrium p-values for each variant.
+
+.. code-block:: python
+
+   from edge_gwas.utils import calculate_hwe_pvalues
+   
+   hwe_pvals = calculate_hwe_pvalues(
+       genotype_df,
+       verbose=True
+   )
+
+**Parameters:**
+
+* ``genotype_df`` (pandas.DataFrame): Genotype data
+* ``verbose`` (bool): Print calculation information
+
+**Returns:**
+
+* ``pandas.Series``: HWE p-values for each variant
+
+**Example:**
+
+.. code-block:: python
+
+   hwe_pvals = calculate_hwe_pvalues(genotype_df)
+   
+   # Find variants deviating from HWE
+   hwe_violations = hwe_pvals[hwe_pvals < 1e-6]
+   print(f"Variants violating HWE: {len(hwe_violations)}")
+
 Statistical Functions
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -348,6 +575,119 @@ Merge GWAS results with alpha values.
 **Returns:**
 
 * ``pandas.DataFrame``: Merged results with both GWAS and alpha information
+
+additive_gwas()
+"""""""""""""""
+
+Perform standard additive GWAS for comparison with EDGE.
+
+.. code-block:: python
+
+   from edge_gwas.utils import additive_gwas
+   
+   results_df = additive_gwas(
+       genotype_df,
+       phenotype_df,
+       outcome='disease',
+       covariates=['age', 'sex', 'PC1', 'PC2'],
+       outcome_type='binary'
+   )
+
+**Parameters:**
+
+* ``genotype_df`` (pandas.DataFrame): Genotype data
+* ``phenotype_df`` (pandas.DataFrame): Phenotype data
+* ``outcome`` (str): Name of outcome column
+* ``covariates`` (list): List of covariate column names
+* ``outcome_type`` (str): ``'binary'`` for logistic regression, ``'continuous'`` for linear regression
+
+**Returns:**
+
+* ``pandas.DataFrame``: Results with columns:
+  
+  * ``variant_id``: SNP identifier
+  * ``coef``: Effect coefficient
+  * ``std_err``: Standard error
+  * ``pval``: P-value
+
+**Example:**
+
+.. code-block:: python
+
+   # Binary outcome (logistic regression)
+   additive_results = additive_gwas(
+       geno, pheno, 'disease', 
+       ['age', 'sex'], 
+       outcome_type='binary'
+   )
+   
+   # Continuous outcome (linear regression)
+   additive_results = additive_gwas(
+       geno, pheno, 'BMI', 
+       ['age', 'sex'], 
+       outcome_type='continuous'
+   )
+
+cross_validated_edge_analysis()
+""""""""""""""""""""""""""""""""
+
+Perform k-fold cross-validation for EDGE analysis.
+
+.. code-block:: python
+
+   from edge_gwas.utils import cross_validated_edge_analysis
+   
+   avg_alpha, meta_gwas, all_alpha, all_gwas = cross_validated_edge_analysis(
+       genotype_df,
+       phenotype_df,
+       outcome='disease',
+       covariates=['age', 'sex', 'PC1', 'PC2'],
+       outcome_type='binary',
+       n_folds=5,
+       n_jobs=8,
+       random_state=42
+   )
+
+**Parameters:**
+
+* ``genotype_df`` (pandas.DataFrame): Genotype data
+* ``phenotype_df`` (pandas.DataFrame): Phenotype data
+* ``outcome`` (str): Name of outcome column
+* ``covariates`` (list): List of covariate column names
+* ``outcome_type`` (str): ``'binary'`` or ``'continuous'``
+* ``n_folds`` (int): Number of cross-validation folds
+* ``n_jobs`` (int): Number of parallel jobs for EDGE analysis
+* ``random_state`` (int): Random seed for reproducibility
+
+**Returns:**
+
+* ``tuple``: (avg_alpha, meta_gwas_df, combined_alpha, combined_gwas)
+  
+  * ``avg_alpha``: Averaged alpha values across folds
+  * ``meta_gwas_df``: Meta-analyzed GWAS results (Fisher's method)
+  * ``combined_alpha``: All alpha values from all folds
+  * ``combined_gwas``: All GWAS results from all folds
+
+**Example:**
+
+.. code-block:: python
+
+   # Run 5-fold cross-validation
+   avg_alpha, meta_gwas, all_alpha, all_gwas = cross_validated_edge_analysis(
+       genotype_df=geno,
+       phenotype_df=pheno,
+       outcome='disease',
+       covariates=['age', 'sex'] + [f'PC{i}' for i in range(1, 11)],
+       outcome_type='binary',
+       n_folds=5
+   )
+   
+   # Check alpha stability
+   print(f"Mean alpha std: {avg_alpha['alpha_std'].mean():.3f}")
+   
+   # Find unstable variants
+   unstable = avg_alpha[avg_alpha['alpha_std'] > 0.3]
+   print(f"Unstable variants: {len(unstable)}")
 
 Visualization Module
 --------------------
@@ -655,6 +995,145 @@ Version Information
    
    # Get license
    print(edge_gwas.__license__)  # 'GPL-3.0'
+
+Function Reference Summary
+--------------------------
+
+Core Module (edge_gwas.core)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Class: EDGEAnalysis**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 30 25 25
+
+   * - Method
+     - Purpose
+     - Key Input
+     - Output
+   * - ``calculate_alpha()``
+     - Calculate encoding parameters from training data
+     - Genotype, phenotype, covariates
+     - Alpha DataFrame
+   * - ``apply_alpha()``
+     - Apply alpha values to test data for GWAS
+     - Genotype, phenotype, alpha values
+     - GWAS results DataFrame
+   * - ``run_full_analysis()``
+     - Complete two-stage workflow
+     - Train/test genotype & phenotype
+     - (alpha_df, gwas_df)
+   * - ``get_skipped_snps()``
+     - Get list of SNPs that failed convergence
+     - None
+     - List of variant IDs
+
+Utilities Module (edge_gwas.utils)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Data Loading Functions:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 25 20 20 15
+
+   * - Function
+     - Purpose
+     - Key Input
+     - Output
+     - Requirements
+   * - ``load_plink_data()``
+     - Load PLINK binary files
+     - .bed, .bim, .fam paths
+     - (genotype_df, variant_info_df)
+     - pandas-plink
+   * - ``load_pgen_data()``
+     - Load PLINK 2 binary files
+     - .pgen, .pvar, .psam paths
+     - (genotype_df, variant_info_df)
+     - pgenlib
+   * - ``load_bgen_data()``
+     - Load BGEN files
+     - .bgen, .sample paths
+     - (genotype_df, variant_info_df)
+     - bgen-reader
+   * - ``load_vcf_data()``
+     - Load VCF/VCF.GZ files
+     - .vcf/.vcf.gz path
+     - (genotype_df, variant_info_df)
+     - cyvcf2
+   * - ``prepare_phenotype_data()``
+     - Load and prepare phenotype data
+     - File path, column names
+     - Phenotype DataFrame
+     - \-
+
+**Data Processing Functions:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 35 35
+
+   * - Function
+     - Purpose
+     - Output
+   * - ``stratified_train_test_split()``
+     - Split data into train/test sets
+     - (train_g, test_g, train_p, test_p)
+   * - ``filter_variants_by_maf()``
+     - Filter by minor allele frequency
+     - Filtered DataFrame
+   * - ``filter_variants_by_missing()``
+     - Filter by missingness rate
+     - Filtered DataFrame
+   * - ``filter_variants_by_hwe()``
+     - Filter by HWE p-value
+     - Filtered DataFrame
+   * - ``filter_samples_by_call_rate()``
+     - Filter samples by call rate
+     - (filtered_geno, filtered_pheno)
+   * - ``merge_alpha_with_gwas()``
+     - Merge GWAS and alpha results
+     - Merged DataFrame
+
+**Statistical Functions:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 40 30
+
+   * - Function
+     - Purpose
+     - Output
+   * - ``calculate_genomic_inflation()``
+     - Calculate lambda (λ)
+     - Lambda (float)
+   * - ``calculate_hwe_pvalues()``
+     - Calculate HWE p-values
+     - HWE p-values Series
+   * - ``check_case_control_balance()``
+     - Check case/control balance
+     - Dictionary with counts and ratio
+   * - ``qq_plot_data()``
+     - Prepare QQ plot data
+     - (expected, observed) arrays
+
+**Analysis Functions:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 35 30
+
+   * - Function
+     - Purpose
+     - Output
+   * - ``additive_gwas()``
+     - Standard additive GWAS for comparison
+     - GWAS results DataFrame
+   * - ``cross_validated_edge_analysis()``
+     - K-fold cross-validation for EDGE
+     - (avg_alpha, meta_gwas, all_alpha, all_gwas)
 
 See Also
 --------
