@@ -842,7 +842,7 @@ Data Processing Functions
 stratified_train_test_split()
 """""""""""""""""""""""""""""
 
-Split data into training and test sets.
+Split data into training and test sets with stratification and flexible sample ID matching.
 
 .. code-block:: python
 
@@ -854,7 +854,9 @@ Split data into training and test sets.
        outcome_col='disease',
        test_size=0.5,
        random_state=42,
-       is_binary=True
+       is_binary=True,
+       geno_id_col=None,
+       pheno_id_col=None
    )
 
 **Parameters:**
@@ -865,10 +867,57 @@ Split data into training and test sets.
 * ``test_size`` (float): Proportion for test set (0-1)
 * ``random_state`` (int): Random seed for reproducibility
 * ``is_binary`` (bool): Whether to stratify by outcome
+* ``geno_id_col`` (str, optional): **NEW in v0.1.1** - Column or index name for sample IDs in genotype_df. If None, uses the DataFrame index (default: None)
+* ``pheno_id_col`` (str, optional): **NEW in v0.1.1** - Column or index name for sample IDs in phenotype_df. If None, uses the DataFrame index (default: None)
 
 **Returns:**
 
 * ``tuple``: (train_geno, test_geno, train_pheno, test_pheno)
+
+**Examples:**
+
+.. code-block:: python
+
+   # Example 1: Basic usage with matching indices (recommended)
+   pheno = pheno.set_index('IID')  # Set IID as index
+   train_g, test_g, train_p, test_p = stratified_train_test_split(
+       geno, pheno, 'disease', test_size=0.5
+   )
+   
+   # Example 2: Specify different ID columns for genotype and phenotype
+   train_g, test_g, train_p, test_p = stratified_train_test_split(
+       geno, pheno, 'disease',
+       geno_id_col='sample_id',  # Use 'sample_id' column/index from genotype
+       pheno_id_col='IID',        # Use 'IID' column from phenotype
+       test_size=0.5
+   )
+   
+   # Example 3: Genotype uses index, phenotype uses column
+   train_g, test_g, train_p, test_p = stratified_train_test_split(
+       geno, pheno, 'disease',
+       geno_id_col=None,          # Use genotype index
+       pheno_id_col='IID',        # Use phenotype 'IID' column
+       test_size=0.3,
+       random_state=123
+   )
+
+**Note:**
+
+The function automatically handles type mismatches between sample IDs (e.g., strings vs integers) by converting both to strings for comparison, then mapping back to original types for proper indexing. This ensures samples are matched correctly even if genotype IDs are strings ('11') and phenotype IDs are integers (11).
+
+**Tip:**
+
+For simplest usage, ensure both DataFrames have matching sample IDs as their index:
+
+.. code-block:: python
+
+   # Prepare data with matching indices
+   pheno = pheno.set_index('IID')
+   
+   # Then use without specifying ID columns
+   train_g, test_g, train_p, test_p = stratified_train_test_split(
+       geno, pheno, 'disease'
+   )
 
 filter_variants_by_maf()
 """"""""""""""""""""""""
@@ -1305,6 +1354,179 @@ Plot distribution of alpha values.
 
 I/O Handlers Module
 -------------------
+
+download_test_files()
+"""""""""""""""""""""
+
+**NEW in v0.1.1** - Download test data files from GitHub repository for tutorials and testing.
+
+.. code-block:: python
+
+   from edge_gwas import download_test_files
+   
+   results = download_test_files(
+       output_dir='tests',
+       version='v0.1.1',
+       overwrite=False,
+       verbose=True
+   )
+
+**Parameters:**
+
+* ``output_dir`` (str): Directory to save test files (default: 'tests')
+* ``version`` (str): GitHub release version tag to download from (default: 'v0.1.1')
+* ``overwrite`` (bool): If True, overwrite existing files (default: False)
+* ``verbose`` (bool): Print download progress (default: True)
+
+**Returns:**
+
+* ``dict``: Dictionary with download results containing:
+  
+  * ``downloaded`` (list): List of successfully downloaded files
+  * ``skipped`` (list): List of skipped (already existing) files
+  * ``failed`` (list): List of failed downloads
+
+**Downloaded Files:**
+
+* ``test.bed``: PLINK binary genotype file (3,925 samples × 1,000 variants)
+* ``test.bim``: PLINK variant information file
+* ``test.fam``: PLINK sample information file
+* ``test.phen``: Phenotype file with disease status and age
+
+**Examples:**
+
+.. code-block:: python
+
+   # Example 1: Basic usage - download to default 'tests' directory
+   from edge_gwas import download_test_files
+   
+   download_test_files()
+   # Files saved to: tests/test.bed, tests/test.bim, tests/test.fam, tests/test.phen
+
+   # Example 2: Download to custom directory
+   download_test_files(output_dir='data/examples')
+
+   # Example 3: Force re-download (overwrite existing files)
+   results = download_test_files(overwrite=True)
+   print(f"Downloaded: {results['downloaded']}")
+   print(f"Skipped: {results['skipped']}")
+
+   # Example 4: Download specific version
+   download_test_files(version='main')  # Download from main branch
+
+   # Example 5: Verify download results
+   results = download_test_files()
+   if results['failed']:
+       print(f"Warning: Failed to download {results['failed']}")
+   else:
+       print("✓ All test files ready!")
+
+**Complete Tutorial Workflow:**
+
+.. code-block:: python
+
+   from edge_gwas import (
+       download_test_files,
+       load_plink_data,
+       EDGEAnalysis
+   )
+   import pandas as pd
+   
+   # Step 1: Download test data
+   download_test_files()
+   
+   # Step 2: Load test data
+   geno, info = load_plink_data('tests/test.bed', 'tests/test.bim', 'tests/test.fam')
+   pheno = pd.read_csv('tests/test.phen', sep=' ')
+   
+   # Step 3: Prepare data
+   pheno = pheno.set_index('IID')
+   
+   # Step 4: Split and analyze
+   from edge_gwas.utils import stratified_train_test_split
+   
+   train_g, test_g, train_p, test_p = stratified_train_test_split(
+       geno, pheno, 'disease', test_size=0.5
+   )
+   
+   # Step 5: Run EDGE analysis
+   edge = EDGEAnalysis(outcome_type='binary')
+   alpha_df, gwas_df = edge.run_full_analysis(
+       train_g, train_p, test_g, test_p,
+       outcome_col='disease',
+       covariate_cols=['age']
+   )
+   
+   print(f"✓ Analysis complete! Found {len(gwas_df)} variants")
+
+**File Verification:**
+
+.. code-block:: python
+
+   import os
+   
+   # Download files
+   results = download_test_files()
+   
+   # Verify file sizes and existence
+   test_files = {
+       'tests/test.bed': 'Genotype data (binary)',
+       'tests/test.bim': 'Variant information',
+       'tests/test.fam': 'Sample information',
+       'tests/test.phen': 'Phenotype data'
+   }
+   
+   for filepath, description in test_files.items():
+       if os.path.exists(filepath):
+           size_kb = os.path.getsize(filepath) / 1024
+           print(f"✓ {filepath}")
+           print(f"  {description} - {size_kb:.1f} KB")
+       else:
+           print(f"✗ {filepath} - MISSING!")
+
+**Re-downloading Files:**
+
+.. code-block:: python
+
+   # Method 1: Use overwrite parameter
+   download_test_files(overwrite=True)
+   
+   # Method 2: Delete directory first
+   import shutil
+   if os.path.exists('tests'):
+       shutil.rmtree('tests')
+   download_test_files()
+   
+   # Method 3: Download to new location
+   download_test_files(output_dir='tests_fresh')
+
+**Troubleshooting:**
+
+If download fails:
+
+.. code-block:: python
+
+   # Check internet connection and retry
+   results = download_test_files(overwrite=True, verbose=True)
+   
+   # If still failing, download manually:
+   # 1. Visit: https://github.com/nicenzhou/edge-gwas/tree/v0.1.1/tests
+   # 2. Download files: test.bed, test.bim, test.fam, test.phen
+   # 3. Place in 'tests' directory
+
+**Note:**
+
+* Requires internet connection to download from GitHub
+* Files are downloaded from the specified GitHub release version
+* Total download size: ~1-2 MB
+* Test data contains simulated genotypes for demonstration purposes only
+
+**See Also:**
+
+* :ref:`quickstart` - Quick start tutorial using test data
+* :ref:`tutorials` - Detailed tutorials with test data examples
+* ``load_plink_data()`` - Load the downloaded PLINK files
+* ``prepare_phenotype_data()`` - Load the downloaded phenotype file
 
 save_results()
 ~~~~~~~~~~~~~~
