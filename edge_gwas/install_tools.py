@@ -181,9 +181,12 @@ class ExternalToolsInstaller:
         print("Installing GCTA...")
         
         if self.system == 'Linux':
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-linux-kernel-3-x86_64.zip'
+            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-linux-kernel-3-x86_64.zip'
+            extract_dir = 'gcta-1.94.1-linux-kernel-3-x86_64'
         elif self.system == 'Darwin':  # macOS
-            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-macOS-x86_64.zip'
+            # Use stable x86_64 version for macOS (works on both Intel and Apple Silicon via Rosetta)
+            url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-MacOS-x86_64.zip'
+            extract_dir = 'gcta-1.94.1-MacOS-x86_64'
         else:
             print(f"  GCTA auto-installation not supported on {self.system}")
             raise Exception(f"Unsupported OS: {self.system}")
@@ -197,51 +200,26 @@ class ExternalToolsInstaller:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(self.bin_dir)
         
-        # Find the GCTA binary - check all possible locations
-        possible_binaries = []
-        
-        # Search in bin_dir for any gcta* files
-        for item in self.bin_dir.iterdir():
-            if item.is_file() and 'gcta' in item.name.lower() and item.name != 'gcta.zip':
-                possible_binaries.append(item)
-            elif item.is_dir() and 'gcta' in item.name.lower():
-                # Search inside directory
-                for subitem in item.rglob('gcta*'):
-                    if subitem.is_file() and not subitem.name.endswith('.zip'):
-                        possible_binaries.append(subitem)
-        
-        # Find the actual executable
-        source_binary = None
-        for binary in possible_binaries:
-            # Check if it's executable or can be made executable
-            if binary.suffix not in ['.txt', '.md', '.pdf', '.zip']:
-                source_binary = binary
-                break
-        
-        if not source_binary:
-            # List what was extracted for debugging
-            print(f"  Debug: Contents of {self.bin_dir}:")
-            for item in self.bin_dir.iterdir():
-                print(f"    {item.name} ({'dir' if item.is_dir() else 'file'})")
-            
-            raise Exception(f"GCTA binary not found after extraction")
-        
+        # Look for the binary in the extracted directory
+        source_binary = self.bin_dir / extract_dir / 'gcta64'
         dest_binary = self.bin_dir / 'gcta64'
         
-        # If source is not the final destination, move it
-        if source_binary != dest_binary:
-            if dest_binary.exists():
-                dest_binary.unlink()
-            shutil.copy(str(source_binary), str(dest_binary))
+        if not source_binary.exists():
+            # Debug: show what was extracted
+            print(f"  Debug: Looking for binary in {extract_dir}")
+            if (self.bin_dir / extract_dir).exists():
+                print(f"  Contents:")
+                for item in (self.bin_dir / extract_dir).iterdir():
+                    print(f"    - {item.name}")
+            
+            raise Exception(f"GCTA binary not found at expected location: {source_binary}")
         
+        shutil.move(str(source_binary), str(dest_binary))
         dest_binary.chmod(0o755)
         
-        # Clean up extracted directories
-        for item in self.bin_dir.iterdir():
-            if item.is_dir() and 'gcta' in item.name.lower():
-                shutil.rmtree(item, ignore_errors=True)
-        
-        zip_path.unlink(missing_ok=True)
+        # Clean up
+        shutil.rmtree(self.bin_dir / extract_dir, ignore_errors=True)
+        zip_path.unlink()
         
         # Verify installation
         try:
