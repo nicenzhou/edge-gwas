@@ -2392,7 +2392,7 @@ See Also
 
 **Documentation:**
 
-* `Documentation Home <index.html>`_ - Index page of the documentation
+* `Documentation Home <index.html>`_ - Home
 * :ref:`installation` - Installation instructions and requirements
 * :ref:`quickstart` - Getting started guide with simple examples
 * :ref:`user_guide` - Comprehensive user guide and tutorials
