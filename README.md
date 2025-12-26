@@ -1,7 +1,7 @@
 # edge-gwas: A Python package for identifying nonadditive SNP effects using flexible genetic encoding
 
 [![Version](https://img.shields.io/badge/version-0.1.1-green.svg)](https://github.com/nicenzhou/edge-gwas/releases)
-[![Documentation Status](https://readthedocs.org/projects/edge-gwas/badge/?version=latest)](https://edge-gwas.readthedocs.io/en/latest/?badge=latest)
+[![Documentation Status](https://readthedocs.org/projects/edge-gwas/badge/?version=v0.1.1)](https://edge-gwas.readthedocs.io/en/v0.1.1/?badge=v0.1.1)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
 
@@ -57,7 +57,7 @@ edge-gwas-check-tools
 
 **Supported Platforms:** Linux, macOS (Intel & Apple Silicon)
 
-See [Installation Guide](https://edge-gwas.readthedocs.io/en/latest/installation.html) for details.
+See [Installation Guide](https://edge-gwas.readthedocs.io/en/v0.1.1/installation.html) for details.
 
 ### Fast minimal EDGE GWAS analysis
 
@@ -132,7 +132,7 @@ alpha_df, gwas_df = edge.run_full_analysis(
 )
 ```
 
-**More examples:** [Complete Workflows](https://edge-gwas.readthedocs.io/en/latest/examples.html)
+**More examples:** [Complete Workflows](https://edge-gwas.readthedocs.io/en/v0.1.1/examples.html)
 
 ## Statistical Model
 
@@ -152,7 +152,7 @@ $$\alpha = \frac{\beta_{Het}}{\beta_{Hom}}$$
 - **α ≈ 1**: Dominant (heterozygotes = homozygotes)
 - **α < 0 or α > 1**: Over-dominance/under-recessiveness
 
-**Learn more:** [Statistical Model Documentation](https://edge-gwas.readthedocs.io/en/latest/statistical_model.html)
+**Learn more:** [Statistical Model Documentation](https://edge-gwas.readthedocs.io/en/v0.1.1/statistical_model.html)
 
 ## What's New in v0.1.1
 
@@ -224,15 +224,15 @@ covariates = ['age', 'sex'] + get_pc_covariate_list(10)
 
 ## Documentation
 
-**Complete documentation:** https://edge-gwas.readthedocs.io/
+**Complete documentation:** https://edge-gwas.readthedocs.io/en/v0.1.1/
 
-- [Installation Guide](https://edge-gwas.readthedocs.io/en/latest/installation.html)
-- [Quick Start Tutorial](https://edge-gwas.readthedocs.io/en/latest/quickstart.html)
-- [User Guide](https://edge-gwas.readthedocs.io/en/latest/user_guide.html)
-- [API Reference](https://edge-gwas.readthedocs.io/en/latest/api_reference.html)
-- [Example Workflows](https://edge-gwas.readthedocs.io/en/latest/examples.html)
-- [Statistical Model](https://edge-gwas.readthedocs.io/en/latest/statistical_model.html)
-- [Changelog](https://edge-gwas.readthedocs.io/en/latest/changelog.html)
+- [Installation Guide](https://edge-gwas.readthedocs.io/en/v0.1.1/installation.html)
+- [Quick Start Tutorial](https://edge-gwas.readthedocs.io/en/v0.1.1/quickstart.html)
+- [User Guide](https://edge-gwas.readthedocs.io/en/v0.1.1/user_guide.html)
+- [API Reference](https://edge-gwas.readthedocs.io/en/v0.1.1/api_reference.html)
+- [Example Workflows](https://edge-gwas.readthedocs.io/en/v0.1.1/examples.html)
+- [Statistical Model](https://edge-gwas.readthedocs.io/en/v0.1.1/statistical_model.html)
+- [Changelog](https://edge-gwas.readthedocs.io/en/v0.1.1/changelog.html)
 
 ## External Tools
 
@@ -350,8 +350,8 @@ If you use edge-gwas in your research, please cite:
 
 **Documentation:**
 - Main docs: https://edge-gwas.readthedocs.io/
-- API Reference: https://edge-gwas.readthedocs.io/en/latest/api_reference.html
-- Examples: https://edge-gwas.readthedocs.io/en/latest/examples.html
+- API Reference: https://edge-gwas.readthedocs.io/en/v0.1.1/api_reference.html
+- Examples: https://edge-gwas.readthedocs.io/en/v0.1.1/examples.html
 
 **Get Help:**
 - GitHub Issues: https://github.com/nicenzhou/edge-gwas/issues
