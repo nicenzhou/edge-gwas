@@ -62,13 +62,24 @@ class ExternalToolsInstaller:
             
             for config in shell_configs:
                 if config.exists():
-                    with open(config, 'r') as f:
-                        content = f.read()
-                    
-                    if 'edge-gwas' not in content:
-                        with open(config, 'a') as f:
-                            f.write(path_addition)
-                        print(f"Updated PATH in {config}")
+                    try:
+                        # Check if already updated
+                        with open(config, 'r') as f:
+                            content = f.read()
+                        
+                        if 'edge-gwas' not in content:
+                            # Try to append
+                            with open(config, 'a') as f:
+                                f.write(path_addition)
+                            print(f"Updated PATH in {config}")
+                        else:
+                            print(f"PATH already configured in {config}")
+                    except PermissionError:
+                        print(f"Warning: Could not update {config} (permission denied)")
+                        print(f"Please manually add to your shell config:")
+                        print(f'  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> {config}')
+                    except Exception as e:
+                        print(f"Warning: Could not update {config}: {e}")
     
     def install_all(self):
         """Install all external tools."""
