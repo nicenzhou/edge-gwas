@@ -35,7 +35,7 @@ from .utils import (
 )
 
 # Import IO handler functions
-from .io_handler import (
+from .io_handlers import (
     save_results,
     load_alpha_values,
     format_gwas_output,
