@@ -188,7 +188,7 @@ class ExternalToolsInstaller:
             if choice == '1':
                 return 'arm64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-macOS-arm64.zip', 'gcta-1.95.0-macOS-arm64'
             else:
-                return 'x86_64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-MacOS-x86_64.zip', 'gcta-1.94.1-MacOS-x86_64'
+                return 'x86_64', 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.94.1-macOS-x86_64.zip', 'gcta-1.94.1-macOS-x86_64'
     
     def install_all(self):
         """Install all external tools."""
@@ -285,7 +285,7 @@ class ExternalToolsInstaller:
             url = 'https://yanglab.westlake.edu.cn/software/gcta/bin/gcta-1.95.0-linux-kernel-3-x86_64.zip'
             extract_dir = 'gcta-1.95.0-linux-kernel-3-x86_64'
             arch_type = 'linux'
-            binary_name = 'gcta'  # Linux version uses 'gcta'
+            binary_name = 'gcta64'  # Linux version uses 'gcta'
         elif self.system == 'Darwin':  # macOS
             arch_type, url, extract_dir = self.choose_mac_architecture("GCTA")
             binary_name = 'gcta64'  # macOS versions use 'gcta64'
