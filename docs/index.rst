@@ -8,7 +8,7 @@ using flexible genetic encoding, rather than assuming additive inheritance.
 .. warning::
    ⚠️ **Current Version 0.1.1** - Under Public Testing
    
-   Recommended to use v0.1.0 - more stable although with fewer functions.
+   Recommended to use v0.1.1 - more stable and more functions.
 
 .. note::
    The original EDGE implementation (v0.0.0) is available at 
