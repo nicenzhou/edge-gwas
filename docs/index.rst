@@ -3,7 +3,7 @@
 .. image:: images/EDGE.jpg
    :alt: EDGE Logo
    :width: 300px
-   :align: center
+   :align: left
 
 Welcome to edge-gwas Documentation
 ===================================
