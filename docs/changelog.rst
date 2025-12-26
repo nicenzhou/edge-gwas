@@ -8,10 +8,58 @@ All notable changes to edge-gwas will be documented in this file.
 The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`_,
 and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0.html>`_.
 
-Version 0.1.0 (2025-12-24) - Current Release
+Version 0.1.1 (2025-12-25) - Current Release
 --------------------------------------------
 
 **Status:** ⚠️ Public Testing Phase
+
+Changed
+^^^^^^^
+
+**Data Handling:**
+
+* **Breaking Change:** Replaced Koalas DataFrames with pandas DataFrames throughout codebase
+* Updated ``load_participant_data()`` to use pandas instead of ``participant.retrieve_fields().to_koalas()``
+* Simplified DataFrame operations by removing Koalas dependency
+* Improved compatibility with standard pandas ecosystem
+* Better performance for typical dataset sizes
+
+**Dependencies:**
+
+* Removed dependency on ``databricks.koalas``
+* All operations now use native pandas (>= 1.2.0)
+
+Migration from v0.1.0
+^^^^^^^^^^^^^^^^^^^^^
+
+**Breaking Changes:**
+
+* Code using ``.to_koalas()`` will need to be updated to use pandas DataFrames
+* Remove any ``import databricks.koalas`` statements
+* Replace ``koalas`` DataFrame operations with standard pandas operations
+
+**Migration Example:**
+
+.. code-block:: python
+
+   # Old code (v0.1.0)
+   import databricks.koalas as ks
+   participant_df = participant.retrieve_fields(fields=fields, engine=dxdata.connect()).to_koalas()
+   
+   # New code (v0.1.1)
+   import pandas as pd
+   participant_df = participant.retrieve_fields(fields=fields, engine=dxdata.connect())
+
+Bug Fixes
+^^^^^^^^^
+
+* Resolved compatibility issues with recent pandas versions
+* Improved memory efficiency in data loading operations
+
+Version 0.1.0 (2025-12-24)
+--------------------------
+
+**Status:** Public Testing Phase
 
 Initial Release
 ~~~~~~~~~~~~~~~
@@ -108,6 +156,7 @@ Dependencies
 * scikit-learn >= 0.24.0
 * matplotlib >= 3.3.0
 * pandas-plink >= 2.0.0
+* databricks-koalas (deprecated in v0.1.1)
 
 Installation Methods
 ^^^^^^^^^^^^^^^^^^^^
@@ -123,6 +172,7 @@ Known Issues
 * Some edge cases in convergence may require manual inspection
 * Large datasets may require batch processing for memory efficiency
 * Documentation is being continuously expanded
+* Koalas dependency will be removed in v0.1.1
 
 Migration from v0.0.0
 ^^^^^^^^^^^^^^^^^^^^^
@@ -147,7 +197,7 @@ Notes
 * This is a **testing release** - please report issues on GitHub
 * Version 0.0.0 (standalone scripts) is no longer maintained
 * See https://github.com/nicenzhou/EDGE for legacy version
-* Recommended to use v0.1.0 for new projects
+* Recommended to use v0.1.1 or later for new projects
 
 ---
 
@@ -190,13 +240,13 @@ Deprecation Notice
    
    * No bug fixes will be provided
    * No new features will be added
-   * Users should migrate to v0.1.0 or later
+   * Users should migrate to v0.1.1 or later
    * Legacy repository remains available for reference only
 
 Migration Guide
 ^^^^^^^^^^^^^^^
 
-To migrate from v0.0.0 to v0.1.0:
+To migrate from v0.0.0 to v0.1.1:
 
 **Old code (v0.0.0):**
 
@@ -206,7 +256,7 @@ To migrate from v0.0.0 to v0.1.0:
    python calculate_alpha.py --input data.txt --output alpha.txt
    python apply_alpha.py --alpha alpha.txt --input test.txt
 
-**New code (v0.1.0):**
+**New code (v0.1.1):**
 
 .. code-block:: python
 
@@ -223,23 +273,24 @@ To migrate from v0.0.0 to v0.1.0:
 Upcoming Features (Roadmap)
 ----------------------------
 
-Version 0.1.1 (Planned)
+Version 0.2.0 (Planned)
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 Enhancements
 ^^^^^^^^^^^^
 
-* Improved convergence handling
-* Additional visualization options
-* Performance optimizations
-* Extended documentation with more examples
+* Additional statistical tests and corrections
+* Support for more genetic data formats
+* Enhanced parallel processing capabilities
+* Advanced filtering options
+* Interactive visualization tools
 
 Bug Fixes
 ^^^^^^^^^
 
-* Address convergence issues reported in v0.1.0
-* Fix edge cases in data loading
-* Improve error messages
+* Improved convergence handling
+* Better error messages and validation
+* Memory optimization for large datasets
 
 ---
 
@@ -252,11 +303,11 @@ Version History Summary
 
    * - 0.1.1
      - 2025-12-25
-     - Pending
-     - Add more functions
+     - Current
+     - Pandas migration, removed Koalas dependency
    * - 0.1.0
      - 2025-12-24
-     - Public Testing
+     - Superseded
      - First packaged release, full API, documentation
    * - 0.0.0
      - 2024-04-02
