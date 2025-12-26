@@ -1,3 +1,5 @@
+![Logo](docs/images/EDGE_RG.jpg)
+
 # edge-gwas: A Python package for identifying nonadditive SNP effects using flexible genetic encoding
 
 [![Version](https://img.shields.io/badge/version-0.1.1-green.svg)](https://github.com/nicenzhou/edge-gwas/releases)
