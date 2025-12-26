@@ -810,6 +810,25 @@ If you're upgrading from v0.1.0, here's what's new:
 
    from edge_gwas.utils import additive_gwas, cross_validated_edge_analysis
 
+See Also
+--------
+
+**Documentation:**
+
+* :ref:`index` - Index page of the documentation
+* :ref:`installation` - Installation instructions and requirements
+* :ref:`quickstart` - Getting started guide with simple examples
+* :ref:`user_guide` - Comprehensive user guide and tutorials
+* :ref:`api_reference` - Complete API documentation
+* :ref:`examples` - Example analyses and case studies
+* :ref:`visualization` - Plotting and visualization guide
+* :ref:`statistical_model` - Statistical methods and mathematical background
+* :ref:`troubleshooting` - Troubleshooting guide and common issues
+* :ref:`faq` - Frequently asked questions
+* :ref:`citation` - How to cite EDGE in publications
+* :ref:`changelog` - Version history and release notes
+* :ref:`futureupdates` - Planned features and roadmap
+
 ---
 
 *Last updated: 2025-12-25 for edge-gwas v0.1.1*
