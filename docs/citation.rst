@@ -142,6 +142,9 @@ See Also
 * :ref:`contributing` - How to contribute
 * GitHub repository - https://github.com/YOUR-USERNAME/edge-gwas
 
+
+---
+
 *Last updated: 2025-12-25 for edge-gwas v0.1.1*
 
 *For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues
