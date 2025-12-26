@@ -4,7 +4,9 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
 
-⚠️ **Current Version 0.1.0 - Under Public Testing**
+⚠️ **Current Version 0.1.1 - Under Public Testing**
+
+⚠️ **Recommended to use v0.1.0 - more stable, although it is still under testing with fewer functions.**
 
 ## Overview
 
