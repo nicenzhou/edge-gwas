@@ -40,7 +40,7 @@ def load_plink_data(
     G = read_plink1_bin(bed_file, bim_file, fam_file, verbose=verbose)
     
     # Extract genotype matrix 
-    genotypes = G.values.T 
+    genotypes = G.values 
     sample_ids = G.coords['sample'].values
     variant_ids = G.coords['snp'].values
     
@@ -52,7 +52,7 @@ def load_plink_data(
     # Create DataFrame: variants as rows, samples as columns
     # Then transpose to get samples as rows, variants as columns
     genotype_df = pd.DataFrame(
-        genotypes.T,  # Transpose HERE in the DataFrame constructor
+        genotypes,  # Transpose HERE in the DataFrame constructor
         index=pd.Index(sample_ids, name='sample_id'),
         columns=pd.Index(variant_ids, name='variant_id')
     )
