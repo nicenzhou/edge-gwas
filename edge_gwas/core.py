@@ -820,7 +820,7 @@ class EDGEAnalysis:
         
         return self.alpha_values
     
-    def apply_alpha(
+def apply_alpha(
     self,
     genotype_data: pd.DataFrame,
     phenotype_df: pd.DataFrame,
