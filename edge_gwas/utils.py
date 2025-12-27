@@ -1255,10 +1255,6 @@ def calculate_pca_plink(
         file_prefix: Prefix for input files
         n_pcs: Number of principal components to calculate
         file_format: Input file format ('bfile', 'pfile', 'vcf', 'bgen'). Default: 'bfile'
-                    - 'bfile': PLINK1 binary (.bed/.bim/.fam)
-                    - 'pfile': PLINK2 binary (.pgen/.pvar/.psam)
-                    - 'vcf': VCF file (.vcf or .vcf.gz)
-                    - 'bgen': BGEN file (.bgen)
         output_prefix: Prefix for output files (default: temp directory)
         maf_threshold: MAF threshold for variant filtering (default: 0.01, None to skip)
         ld_window: Window size for LD pruning in variant count (default: 50, None to skip)
@@ -1269,10 +1265,6 @@ def calculate_pca_plink(
         
     Returns:
         DataFrame with IID as index and PC1, PC2, ..., PCn columns
-        
-    Note:
-        Requires PLINK2 to be installed and available in PATH.
-        Download from: https://www.cog-genomics.org/plink/2.0/
     """
     # Validate file format
     valid_formats = ['bfile', 'pfile', 'vcf', 'bgen']
@@ -1354,10 +1346,11 @@ def calculate_pca_plink(
         if result.returncode != 0:
             raise RuntimeError(f"PLINK2 PCA calculation failed:\n{result.stderr}")
         
-        # Read results
+        # Read results - FIXED: skip comment lines starting with #
         eigenvec_file = f"{output_prefix}.eigenvec"
-        pca_df = pd.read_csv(eigenvec_file, sep='\s+', header=None)
+        pca_df = pd.read_csv(eigenvec_file, sep='\s+', comment='#', header=None, engine='python')
         
+        # Set column names
         pc_cols = [f'PC{i+1}' for i in range(n_pcs)]
         pca_df.columns = ['FID', 'IID'] + pc_cols
         pca_df = pca_df[['IID'] + pc_cols]
@@ -1658,18 +1651,20 @@ def attach_pcs_to_phenotype(
     n_pcs: int = 10,
     pc_prefix: str = 'PC',
     sample_id_col: Optional[str] = None,
+    drop_na: bool = False,
     verbose: bool = True
 ) -> pd.DataFrame:
     """
     Attach principal components to phenotype DataFrame.
     
     Args:
-        phenotype_df: Phenotype DataFrame
+        phenotype_df: Phenotype DataFrame (IID as index or column)
         pca_df: PCA DataFrame with IID as index and PC columns
         n_pcs: Number of PCs to attach (will use PC1 to PCn)
         pc_prefix: Prefix for PC column names (default: 'PC')
         sample_id_col: Column name in phenotype_df to use for matching with PCA IIDs
                       If None, uses phenotype_df.index
+        drop_na: If True, remove samples with missing PCs after merging (default: False)
         verbose: Print information about merging
         
     Returns:
@@ -1677,19 +1672,6 @@ def attach_pcs_to_phenotype(
         
     Raises:
         ValueError: If requested PCs are not available in pca_df
-        
-    Example:
-        >>> # When phenotype has IID as index
-        >>> pheno_df = pd.DataFrame({'age': [25, 30], 'disease': [0, 1]}, 
-        ...                         index=['sample1', 'sample2'])
-        >>> pca_df = calculate_pca_plink('genotypes')
-        >>> pheno_with_pcs = attach_pcs_to_phenotype(pheno_df, pca_df, n_pcs=10)
-        
-        >>> # When phenotype has IID as a column
-        >>> pheno_df = pd.DataFrame({'IID': ['sample1', 'sample2'], 
-        ...                          'age': [25, 30], 'disease': [0, 1]})
-        >>> pheno_with_pcs = attach_pcs_to_phenotype(pheno_df, pca_df, n_pcs=10, 
-        ...                                          sample_id_col='IID')
     """
     # Check if requested PCs are available
     available_pcs = [col for col in pca_df.columns if col.startswith(pc_prefix)]
@@ -1709,41 +1691,56 @@ def attach_pcs_to_phenotype(
     if missing_pcs:
         raise ValueError(f"Missing PC columns in pca_df: {missing_pcs}")
     
+    # Prepare PCA data - convert index to column
     pcs_to_add = pca_df[pc_cols].copy()
+    pcs_to_add = pcs_to_add.reset_index()  # This creates 'IID' column from index
+    pcs_to_add['IID'] = pcs_to_add['IID'].astype(str)
     
-    # Reset PCA index to have IID as a column for merging
-    pcs_to_add['IID'] = pcs_to_add.index.astype(str)
-    
-    # Prepare phenotype dataframe for merging
+    # Prepare phenotype dataframe
     result_df = phenotype_df.copy()
     
     if sample_id_col is None:
         # Use index for matching
-        result_df['_merge_id'] = result_df.index.astype(str)
-        original_index = result_df.index
+        result_df = result_df.reset_index()  # Convert index to column
+        merge_col = result_df.columns[0]  # First column is the index
+        result_df[merge_col] = result_df[merge_col].astype(str)
         use_index = True
+        original_index_name = phenotype_df.index.name
     else:
         # Use specified column for matching
         if sample_id_col not in result_df.columns:
             raise ValueError(f"Column '{sample_id_col}' not found in phenotype_df")
-        result_df['_merge_id'] = result_df[sample_id_col].astype(str)
+        merge_col = sample_id_col
+        result_df[merge_col] = result_df[merge_col].astype(str)
         use_index = False
+        original_index_name = None
     
     # Merge PCs with phenotype data
     merged_df = result_df.merge(
         pcs_to_add,
-        left_on='_merge_id',
+        left_on=merge_col,
         right_on='IID',
         how='left',
         suffixes=('', '_pc')
     )
     
-    # Drop merge columns
-    merged_df.drop(['_merge_id', 'IID'], axis=1, inplace=True, errors='ignore')
+    # Drop the extra IID column from PCA
+    if 'IID' in merged_df.columns and merge_col != 'IID':
+        merged_df.drop('IID', axis=1, inplace=True)
     
-    # Restore original index if it was used
+    # Restore index if it was used
     if use_index:
-        merged_df.index = original_index
+        merged_df.set_index(merge_col, inplace=True)
+        if original_index_name:
+            merged_df.index.name = original_index_name
+    
+    # Remove samples with missing PCs if requested
+    if drop_na:
+        n_before = len(merged_df)
+        merged_df = merged_df.dropna(subset=pc_cols)
+        n_after = len(merged_df)
+        if verbose and n_before > n_after:
+            logger.info(f"Dropped {n_before - n_after} samples with missing PCs")
     
     if verbose:
         n_pheno_samples = len(phenotype_df)
@@ -1755,19 +1752,10 @@ def attach_pcs_to_phenotype(
         logger.info(f"PCA samples: {n_pca_samples}")
         logger.info(f"Samples with PCs after merge: {n_with_pcs}")
         
-        if n_with_pcs < n_pheno_samples:
+        if not drop_na and n_with_pcs < n_pheno_samples:
             n_missing = n_pheno_samples - n_with_pcs
             logger.warning(f"{n_missing} samples in phenotype_df have no PCs (will have NA values)")
-        
-        if n_with_pcs < n_pca_samples:
-            n_extra = n_pca_samples - n_with_pcs
-            logger.info(f"{n_extra} samples in pca_df are not in phenotype_df")
-        
-        # Check for missing values
-        for pc_col in pc_cols:
-            n_missing_pc = merged_df[pc_col].isna().sum()
-            if n_missing_pc > 0:
-                logger.warning(f"{pc_col}: {n_missing_pc} samples with missing values")
+            logger.info("Set drop_na=True to remove samples with missing PCs")
     
     return merged_df
 
