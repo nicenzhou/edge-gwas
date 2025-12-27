@@ -1247,31 +1247,8 @@ def calculate_pca_plink(
     approx: bool = False,
     verbose: bool = True
 ) -> pd.DataFrame:
-    """
-    Calculate principal components using PLINK2.
+    """Calculate principal components using PLINK2."""
     
-    Args:
-        plink_prefix: Prefix for PLINK binary files (.bed/.bim/.fam)
-        n_pcs: Number of principal components to calculate
-        output_prefix: Prefix for output files (default: temp directory)
-        maf_threshold: MAF threshold for variant filtering (default: 0.01, None to skip)
-        ld_window: Window size for LD pruning in variant count (default: 50, None to skip LD pruning)
-        ld_step: Step size for LD pruning in variant count (default: 5, None to skip LD pruning)
-        ld_r2: R² threshold for LD pruning (default: 0.2, None to skip LD pruning)
-        approx: Use approximate PCA for large cohorts (faster, recommended for >5000 samples)
-        verbose: Print progress information
-        
-    Returns:
-        DataFrame with IID as index and PC1, PC2, ..., PCn columns
-        
-    Note:
-        Requires PLINK2 to be installed and available in PATH.
-        Download from: https://www.cog-genomics.org/plink/2.0/
-        
-        For large cohorts (>5000 samples), use approx=True for faster computation.
-        Set maf_threshold, ld_window, ld_step, or ld_r2 to None to skip those filters.
-    """
-    # Create temporary directory if no output prefix specified
     if output_prefix is None:
         temp_dir = tempfile.mkdtemp()
         output_prefix = os.path.join(temp_dir, 'pca')
@@ -1290,21 +1267,13 @@ def calculate_pca_plink(
                 logger.info(f"LD pruning: window={ld_window}, step={ld_step}, r²<{ld_r2}")
         
         # Step 1: LD pruning (optional)
-        # Only perform LD pruning if parameters are provided
         if ld_window is not None and ld_step is not None and ld_r2 is not None:
             prune_prefix = f"{output_prefix}_pruned"
+            cmd_prune = ['plink2', '--bfile', plink_prefix]
             
-            # Build LD pruning command
-            cmd_prune = [
-                'plink2',
-                '--bfile', plink_prefix,
-            ]
-            
-            # Add MAF filter if specified
             if maf_threshold is not None:
                 cmd_prune.extend(['--maf', str(maf_threshold)])
             
-            # Add LD pruning parameters (using variant count, not kb)
             cmd_prune.extend([
                 '--indep-pairwise', str(ld_window), str(ld_step), str(ld_r2),
                 '--out', prune_prefix
@@ -1317,41 +1286,25 @@ def calculate_pca_plink(
             if result.returncode != 0:
                 raise RuntimeError(f"PLINK2 LD pruning failed:\n{result.stderr}")
             
-            # Use pruned variants for PCA
             extract_file = f'{prune_prefix}.prune.in'
         else:
-            # Skip LD pruning
             if verbose:
-                logger.info("Skipping LD pruning (parameters not provided)")
+                logger.info("Skipping LD pruning")
             extract_file = None
         
         # Step 2: Calculate PCA
-        cmd_pca = [
-            'plink2',
-            '--bfile', plink_prefix,
-        ]
+        cmd_pca = ['plink2', '--bfile', plink_prefix]
         
-        # Add MAF filter if specified and no LD pruning was done
         if maf_threshold is not None and extract_file is None:
             cmd_pca.extend(['--maf', str(maf_threshold)])
         
-        # Add extract file if LD pruning was performed
         if extract_file is not None:
             cmd_pca.extend(['--extract', extract_file])
         
-        # Add PCA command
         if approx:
-            # Use approximate PCA (PLINK2 will use default approximation)
-            cmd_pca.extend([
-                '--pca', 'approx', str(n_pcs),
-                '--out', output_prefix
-            ])
+            cmd_pca.extend(['--pca', 'approx', str(n_pcs), '--out', output_prefix])
         else:
-            # Use exact PCA
-            cmd_pca.extend([
-                '--pca', str(n_pcs),
-                '--out', output_prefix
-            ])
+            cmd_pca.extend(['--pca', str(n_pcs), '--out', output_prefix])
         
         if verbose:
             logger.info("Step 2: Calculating PCA...")
@@ -1360,38 +1313,32 @@ def calculate_pca_plink(
         if result.returncode != 0:
             raise RuntimeError(f"PLINK2 PCA calculation failed:\n{result.stderr}")
         
-        # Read eigenvec file
+        # Read results
         eigenvec_file = f"{output_prefix}.eigenvec"
         pca_df = pd.read_csv(eigenvec_file, sep='\s+', header=None)
         
-        # Set column names
-        # PLINK2 format: #FID IID PC1 PC2 ... PCn
         pc_cols = [f'PC{i+1}' for i in range(n_pcs)]
         pca_df.columns = ['FID', 'IID'] + pc_cols
-        
-        # Keep only IID and PC columns
         pca_df = pca_df[['IID'] + pc_cols]
-        
-        # Convert IID to string
         pca_df['IID'] = pca_df['IID'].astype(str)
-        
-        # Set IID as index
         pca_df.set_index('IID', inplace=True)
         
-        # Read eigenval file for variance explained
         if verbose:
             eigenval_file = f"{output_prefix}.eigenval"
             if os.path.exists(eigenval_file):
                 eigenvals = pd.read_csv(eigenval_file, header=None).values.flatten()
-                total_var = eigenvals.sum()
-                var_explained = eigenvals / total_var
+                var_explained = eigenvals / eigenvals.sum()
                 logger.info(f"Variance explained by first 5 PCs: {var_explained[:5]}")
-                logger.info(f"Total variance explained by {n_pcs} PCs: {var_explained.sum():.3f}")
-            
-            logger.info(f"PCA calculation complete. Found {len(pca_df)} samples.")
+                logger.info(f"Total variance explained: {var_explained.sum():.3f}")
+            logger.info(f"PCA complete. Found {len(pca_df)} samples.")
         
         return pca_df
-
+        
+    finally:
+        if cleanup and temp_dir is not None:
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            
 
 def calculate_pca_pcair(
     plink_prefix: str,
