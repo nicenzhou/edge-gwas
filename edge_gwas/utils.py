@@ -2,13 +2,18 @@
 Utility functions for EDGE GWAS analysis.
 """
 
+
+import os
+import sys
+import tempfile
+import subprocess
+import logging
+from typing import Tuple, Optional, Union, List
 import pandas as pd
 import numpy as np
 from pandas_plink import read_plink1_bin
-from sklearn.model_selection import train_test_split, KFold
-from typing import Tuple, List, Optional
-import logging
 from scipy import stats
+from sklearn.model_selection import train_test_split, KFold
 
 logger = logging.getLogger(__name__)
 
