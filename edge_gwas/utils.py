@@ -828,32 +828,58 @@ def prepare_phenotype_data(
         phenotype_file: Path to phenotype file
         outcome_col: Name of outcome column
         covariate_cols: List of covariate column names
-        sample_id_col: Name of sample ID column
-        sep: File separator
+        sample_id_col: Name of sample ID column (will become index)
+        sep: File separator (default: tab)
         log_transform_outcome: Apply log10(x+1) transformation to outcome
         
     Returns:
         DataFrame with sample IDs as index, outcome and covariates as columns
+        
+    Example:
+        >>> pheno = prepare_phenotype_data(
+        ...     'pheno.txt',
+        ...     outcome_col='disease',
+        ...     covariate_cols=['age', 'sex'],
+        ...     sep=' '
+        ... )
     """
     logger.info(f"Loading phenotype data from {phenotype_file}")
     
     # Read phenotype file
     pheno_df = pd.read_csv(phenotype_file, sep=sep)
     
-    # Validate required columns
+    logger.info(f"Loaded {len(pheno_df)} samples with columns: {list(pheno_df.columns)}")
+    
+    # Check sample ID column exists
+    if sample_id_col not in pheno_df.columns:
+        raise ValueError(
+            f"Sample ID column '{sample_id_col}' not found. "
+            f"Available columns: {list(pheno_df.columns)}"
+        )
+    
+    # Validate required columns BEFORE setting index
     validate_phenotype_df(pheno_df, outcome_col, covariate_cols)
     
     # Set sample ID as index
     pheno_df.set_index(sample_id_col, inplace=True)
     
+    # Check for duplicate sample IDs
+    if pheno_df.index.duplicated().any():
+        n_dup = pheno_df.index.duplicated().sum()
+        examples = pheno_df.index[pheno_df.index.duplicated()].unique()[:5].tolist()
+        raise ValueError(
+            f"Phenotype data has {n_dup} duplicate sample IDs. "
+            f"Examples: {examples}"
+        )
+    
     # Select outcome and covariates
-    pheno_df = pheno_df[[outcome_col] + covariate_cols]
+    selected_cols = [outcome_col] + covariate_cols
+    pheno_df = pheno_df[selected_cols]
     
     # Log transform outcome if requested
     if log_transform_outcome:
         logger.info(f"Applying log10(x+1) transformation to {outcome_col}")
-        pheno_df[f'log10_{outcome_col}'] = np.log10(pheno_df[outcome_col] + 1)
-        outcome_col = f'log10_{outcome_col}'
+        pheno_df[outcome_col] = np.log10(pheno_df[outcome_col] + 1)
     
     # Remove missing values
     n_before = len(pheno_df)
@@ -863,7 +889,7 @@ def prepare_phenotype_data(
     if n_before > n_after:
         logger.info(f"Removed {n_before - n_after} samples with missing data")
     
-    logger.info(f"Prepared phenotype data for {n_after} samples")
+    logger.info(f"✓ Prepared phenotype data for {n_after} samples")
     
     return pheno_df
 
@@ -871,7 +897,8 @@ def prepare_phenotype_data(
 def validate_phenotype_df(
     phenotype_df: pd.DataFrame,
     outcome_col: str,
-    covariate_cols: Optional[List[str]] = None
+    covariate_cols: List[str],
+    name: str = "phenotype_df"
 ) -> None:
     """
     Validate phenotype DataFrame format.
@@ -879,25 +906,35 @@ def validate_phenotype_df(
     Args:
         phenotype_df: Phenotype DataFrame to validate
         outcome_col: Name of outcome column
-        covariate_cols: List of covariate column names (can be None or empty list)
+        covariate_cols: List of covariate column names
+        name: Name of the DataFrame for error messages
         
     Raises:
         TypeError: If not a pandas DataFrame
-        ValueError: If DataFrame is empty, has duplicates, or missing columns
+        ValueError: If required columns are missing or DataFrame is invalid
     """
-    validate_genotype_df(phenotype_df, "phenotype_df")
+    if not isinstance(phenotype_df, pd.DataFrame):
+        raise TypeError(f"{name} must be a pandas DataFrame, got {type(phenotype_df)}")
     
-    # Handle None or empty covariate list
-    if covariate_cols is None:
-        covariate_cols = []
+    if phenotype_df.empty:
+        raise ValueError(f"{name} is empty")
     
-    required_cols = [outcome_col] + covariate_cols
-    missing_cols = [col for col in required_cols if col not in phenotype_df.columns]
-    if missing_cols:
+    # Check outcome column exists
+    if outcome_col not in phenotype_df.columns:
         raise ValueError(
-            f"Missing columns in phenotype_df: {missing_cols}. "
-            f"Available columns: {phenotype_df.columns.tolist()}"
+            f"Outcome column '{outcome_col}' not found in {name}. "
+            f"Available columns: {list(phenotype_df.columns)}"
         )
+    
+    # Check covariate columns exist
+    missing_covariates = [col for col in covariate_cols if col not in phenotype_df.columns]
+    if missing_covariates:
+        raise ValueError(
+            f"Covariate columns {missing_covariates} not found in {name}. "
+            f"Available columns: {list(phenotype_df.columns)}"
+        )
+    
+    logger.info(f"✓ {name} validation passed")
 
 
 def stratified_train_test_split(
