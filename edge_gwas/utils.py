@@ -61,7 +61,7 @@ def validate_genotype_df(genotype_df: pd.DataFrame, name: str = "genotype_df") -
 def validate_phenotype_df(
     phenotype_df: pd.DataFrame,
     outcome_col: str,
-    covariate_cols: List[str]
+    covariate_cols: Optional[List[str]] = None
 ) -> None:
     """
     Validate phenotype DataFrame format.
@@ -69,13 +69,17 @@ def validate_phenotype_df(
     Args:
         phenotype_df: Phenotype DataFrame to validate
         outcome_col: Name of outcome column
-        covariate_cols: List of covariate column names
+        covariate_cols: List of covariate column names (can be None or empty list)
         
     Raises:
         TypeError: If not a pandas DataFrame
         ValueError: If DataFrame is empty, has duplicates, or missing columns
     """
     validate_genotype_df(phenotype_df, "phenotype_df")
+    
+    # Handle None or empty covariate list
+    if covariate_cols is None:
+        covariate_cols = []
     
     required_cols = [outcome_col] + covariate_cols
     missing_cols = [col for col in required_cols if col not in phenotype_df.columns]
