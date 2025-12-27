@@ -796,19 +796,46 @@ def filter_samples_by_call_rate(
     n_before = genotype_df.shape[0]
     
     # Calculate call rate for each sample
+    sample_caldef filter_samples_by_call_rate(
+    genotype_df: pd.DataFrame,
+    phenotype_df: pd.DataFrame,
+    min_call_rate: float = 0.95,
+    verbose: bool = True
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Filter samples by genotype call rate.
+    
+    Args:
+        genotype_df: Genotype DataFrame (samples as index)
+        phenotype_df: Phenotype DataFrame (IID as index)
+        min_call_rate: Minimum call rate (proportion of non-missing genotypes)
+        verbose: Print filtering information
+        
+    Returns:
+        Tuple of (filtered_genotype_df, filtered_phenotype_df)
+    """
+    n_before = genotype_df.shape[0]
+    
+    # Calculate call rate for each sample
     sample_call_rate = genotype_df.notna().mean(axis=1)
     
     # Filter samples
     good_samples = sample_call_rate[sample_call_rate >= min_call_rate].index
     
+    # Convert to strings for matching
+    good_samples_str = good_samples.astype(str)
+    pheno_index_str = phenotype_df.index.astype(str)
+    
+    # Filter both DataFrames
     genotype_df_filtered = genotype_df.loc[good_samples]
-    phenotype_df_filtered = phenotype_df.loc[phenotype_df.index.intersection(good_samples)]
+    phenotype_df_filtered = phenotype_df[pheno_index_str.isin(good_samples_str)].copy()
     
     n_after = genotype_df_filtered.shape[0]
     
     if verbose:
         logger.info(f"Filtered samples by call rate >= {min_call_rate}")
         logger.info(f"Kept {n_after}/{n_before} samples ({n_after/n_before*100:.1f}%)")
+        logger.info(f"Phenotype samples: {len(phenotype_df_filtered)}")
     
     return genotype_df_filtered, phenotype_df_filtered
 
