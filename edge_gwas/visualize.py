@@ -159,7 +159,8 @@ def plot_alpha_distribution(
     alpha_df: pd.DataFrame,
     output: str = 'alpha_distribution.png',
     bins: int = 50,
-    figsize: tuple = (10, 6)
+    figsize: tuple = (10, 6),
+    xlim: tuple = None
 ) -> None:
     """
     Plot distribution of alpha values.
@@ -169,15 +170,30 @@ def plot_alpha_distribution(
         output: Output filename
         bins: Number of histogram bins
         figsize: Figure size
+        xlim: Optional tuple (min, max) for x-axis limits, e.g., (-3, 3)
+              If None, uses full range of data
     """
     fig, ax = plt.subplots(figsize=figsize)
     
     alpha_values = alpha_df['alpha_value'].dropna()
     
-    ax.hist(alpha_values, bins=bins, edgecolor='black', alpha=0.7)
+    # Filter values if xlim is specified
+    if xlim is not None:
+        alpha_values_plot = alpha_values[(alpha_values >= xlim[0]) & (alpha_values <= xlim[1])]
+        n_filtered = len(alpha_values) - len(alpha_values_plot)
+        if n_filtered > 0:
+            print(f"Note: {n_filtered} alpha values outside range [{xlim[0]}, {xlim[1]}] excluded from plot")
+    else:
+        alpha_values_plot = alpha_values
+    
+    ax.hist(alpha_values_plot, bins=bins, edgecolor='black', alpha=0.7)
     ax.axvline(0.5, color='red', linestyle='--', linewidth=2, label='Additive (α=0.5)')
     ax.axvline(0, color='orange', linestyle='--', linewidth=2, label='Recessive (α=0)')
     ax.axvline(1, color='green', linestyle='--', linewidth=2, label='Dominant (α=1)')
+    
+    # Set x-axis limits if specified
+    if xlim is not None:
+        ax.set_xlim(xlim)
     
     ax.set_xlabel('Alpha Value', fontsize=12)
     ax.set_ylabel('Frequency', fontsize=12)
@@ -190,3 +206,12 @@ def plot_alpha_distribution(
     plt.close()
     
     print(f"Alpha distribution plot saved to {output}")
+    print(f"Total alpha values: {len(alpha_values)}")
+    if xlim is not None:
+        print(f"Values plotted (within [{xlim[0]}, {xlim[1]}]): {len(alpha_values_plot)}")
+    print(f"Alpha statistics:")
+    print(f"  Mean: {alpha_values.mean():.3f}")
+    print(f"  Median: {alpha_values.median():.3f}")
+    print(f"  Std: {alpha_values.std():.3f}")
+    print(f"  Min: {alpha_values.min():.3f}")
+    print(f"  Max: {alpha_values.max():.3f}")
