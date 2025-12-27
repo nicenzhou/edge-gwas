@@ -1230,12 +1230,11 @@ def calculate_pca_plink(
     plink_prefix: str,
     n_pcs: int = 10,
     output_prefix: Optional[str] = None,
-    maf_threshold: float = 0.01,
-    ld_window: int = 50,
-    ld_step: int = 5,
-    ld_r2: float = 0.2,
+    maf_threshold: Optional[float] = 0.01,
+    ld_window: Optional[int] = 50,
+    ld_step: Optional[int] = 5,
+    ld_r2: Optional[float] = 0.2,
     approx: bool = False,
-    approx_samples: int = 5000,
     verbose: bool = True
 ) -> pd.DataFrame:
     """
@@ -1245,12 +1244,11 @@ def calculate_pca_plink(
         plink_prefix: Prefix for PLINK binary files (.bed/.bim/.fam)
         n_pcs: Number of principal components to calculate
         output_prefix: Prefix for output files (default: temp directory)
-        maf_threshold: MAF threshold for variant filtering
-        ld_window: Window size for LD pruning (in kb)
-        ld_step: Step size for LD pruning
-        ld_r2: R² threshold for LD pruning
+        maf_threshold: MAF threshold for variant filtering (default: 0.01, None to skip)
+        ld_window: Window size for LD pruning in variant count (default: 50, None to skip LD pruning)
+        ld_step: Step size for LD pruning in variant count (default: 5, None to skip LD pruning)
+        ld_r2: R² threshold for LD pruning (default: 0.2, None to skip LD pruning)
         approx: Use approximate PCA for large cohorts (faster, recommended for >5000 samples)
-        approx_samples: Number of samples to use for approximate PCA
         verbose: Print progress information
         
     Returns:
@@ -1262,8 +1260,7 @@ def calculate_pca_plink(
         Download from: https://www.cog-genomics.org/plink/2.0/
         
         For large cohorts (>5000 samples), use approx=True for faster computation.
-        The approximate method computes PCs on a subset of samples and projects
-        the remaining samples onto these PCs.
+        Set maf_threshold, ld_window, ld_step, or ld_r2 to None to skip those filters.
     """
     # Create temporary directory if no output prefix specified
     if output_prefix is None:
@@ -1278,47 +1275,74 @@ def calculate_pca_plink(
         if verbose:
             method = "approximate" if approx else "exact"
             logger.info(f"Calculating {n_pcs} PCs using PLINK2 ({method} method)...")
-            logger.info(f"MAF threshold: {maf_threshold}, LD pruning: r²<{ld_r2}")
-            if approx:
-                logger.info(f"Using {approx_samples} samples for approximate PCA")
+            if maf_threshold is not None:
+                logger.info(f"MAF threshold: {maf_threshold}")
+            if ld_window is not None and ld_r2 is not None:
+                logger.info(f"LD pruning: window={ld_window}, step={ld_step}, r²<{ld_r2}")
         
-        # Step 1: LD pruning
-        prune_prefix = f"{output_prefix}_pruned"
-        cmd_prune = [
-            'plink2',
-            '--bfile', plink_prefix,
-            '--maf', str(maf_threshold),
-            '--indep-pairwise', f'{ld_window}kb', str(ld_step), str(ld_r2),
-            '--out', prune_prefix
-        ]
-        
-        if verbose:
-            logger.info("Step 1: LD pruning...")
-        
-        result = subprocess.run(cmd_prune, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise RuntimeError(f"PLINK2 LD pruning failed:\n{result.stderr}")
+        # Step 1: LD pruning (optional)
+        # Only perform LD pruning if parameters are provided
+        if ld_window is not None and ld_step is not None and ld_r2 is not None:
+            prune_prefix = f"{output_prefix}_pruned"
+            
+            # Build LD pruning command
+            cmd_prune = [
+                'plink2',
+                '--bfile', plink_prefix,
+            ]
+            
+            # Add MAF filter if specified
+            if maf_threshold is not None:
+                cmd_prune.extend(['--maf', str(maf_threshold)])
+            
+            # Add LD pruning parameters (using variant count, not kb)
+            cmd_prune.extend([
+                '--indep-pairwise', str(ld_window), str(ld_step), str(ld_r2),
+                '--out', prune_prefix
+            ])
+            
+            if verbose:
+                logger.info("Step 1: LD pruning...")
+            
+            result = subprocess.run(cmd_prune, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"PLINK2 LD pruning failed:\n{result.stderr}")
+            
+            # Use pruned variants for PCA
+            extract_file = f'{prune_prefix}.prune.in'
+        else:
+            # Skip LD pruning
+            if verbose:
+                logger.info("Skipping LD pruning (parameters not provided)")
+            extract_file = None
         
         # Step 2: Calculate PCA
+        cmd_pca = [
+            'plink2',
+            '--bfile', plink_prefix,
+        ]
+        
+        # Add MAF filter if specified and no LD pruning was done
+        if maf_threshold is not None and extract_file is None:
+            cmd_pca.extend(['--maf', str(maf_threshold)])
+        
+        # Add extract file if LD pruning was performed
+        if extract_file is not None:
+            cmd_pca.extend(['--extract', extract_file])
+        
+        # Add PCA command
         if approx:
-            # Use approximate PCA for large cohorts
-            cmd_pca = [
-                'plink2',
-                '--bfile', plink_prefix,
-                '--extract', f'{prune_prefix}.prune.in',
+            # Use approximate PCA (PLINK2 will use default approximation)
+            cmd_pca.extend([
                 '--pca', 'approx', str(n_pcs),
-                '--pca-sample-ct', str(approx_samples),
                 '--out', output_prefix
-            ]
+            ])
         else:
             # Use exact PCA
-            cmd_pca = [
-                'plink2',
-                '--bfile', plink_prefix,
-                '--extract', f'{prune_prefix}.prune.in',
+            cmd_pca.extend([
                 '--pca', str(n_pcs),
                 '--out', output_prefix
-            ]
+            ])
         
         if verbose:
             logger.info("Step 2: Calculating PCA...")
