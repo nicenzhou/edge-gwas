@@ -1351,56 +1351,15 @@ def calculate_pca_pcair(
     maf_threshold: float = 0.01,
     verbose: bool = True
 ) -> pd.DataFrame:
-    """
-    Calculate PC-AiR (Principal Components - Analysis in Related samples).
+    """Calculate PC-AiR (Principal Components - Analysis in Related samples)."""
     
-    PC-AiR is a method for computing principal components that accounts for 
-    relatedness and ancestry in genetic data. It identifies an ancestry 
-    representative subset of unrelated samples and uses this subset to 
-    compute ancestry informative PCs.
-    
-    Args:
-        plink_prefix: Prefix for PLINK binary files (.bed/.bim/.fam)
-        n_pcs: Number of principal components to calculate
-        kinship_matrix: Path to kinship matrix file (GCTA GRM format prefix)
-                       If None, will compute using calculate_grm_gcta()
-        divergence_matrix: Path to divergence matrix file (optional)
-        output_prefix: Prefix for output files (default: temp directory)
-        kin_threshold: Kinship threshold for defining relatedness (default: 0.0884, ~ 2nd degree)
-        div_threshold: Divergence threshold (default: -0.0884)
-        maf_threshold: MAF threshold for GRM calculation (if kinship_matrix is None)
-        verbose: Print progress information
-        
-    Returns:
-        DataFrame with 'IID' column and PC1, PC2, ..., PCn columns
-        Index is set to IID
-        
-    Note:
-        Requires R with GENESIS package installed:
-        ```R
-        if (!requireNamespace("BiocManager", quietly = TRUE))
-            install.packages("BiocManager")
-        BiocManager::install("GENESIS")
-        BiocManager::install("SNPRelate")
-        BiocManager::install("gdsfmt")
-        ```
-        
-    Reference:
-        Conomos et al. (2015) Genetic Epidemiology
-        https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4608645/
-    """
-    # Check if R and Rscript are available
     try:
         result = subprocess.run(['Rscript', '--version'], capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError("Rscript not found. Please install R.")
     except FileNotFoundError:
-        raise RuntimeError(
-            "Rscript not found in PATH. Please install R and ensure it's available.\n"
-            "Download R from: https://www.r-project.org/"
-        )
+        raise RuntimeError("Rscript not found in PATH. Please install R.")
     
-    # Create temporary directory if no output prefix specified
     if output_prefix is None:
         temp_dir = tempfile.mkdtemp()
         output_prefix = os.path.join(temp_dir, 'pcair')
@@ -1412,9 +1371,7 @@ def calculate_pca_pcair(
     try:
         if verbose:
             logger.info(f"Calculating {n_pcs} PCs using PC-AiR...")
-            logger.info(f"Kinship threshold: {kin_threshold}, Divergence threshold: {div_threshold}")
         
-        # If kinship matrix not provided, calculate using GCTA
         if kinship_matrix is None:
             if verbose:
                 logger.info("Calculating kinship matrix using GCTA...")
@@ -1425,55 +1382,36 @@ def calculate_pca_pcair(
                 verbose=verbose
             )
         
-        # Create R script for PC-AiR with proper escaping
-        bed_file = shlex.quote(f"{plink_prefix}.bed")
-        bim_file = shlex.quote(f"{plink_prefix}.bim")
-        fam_file = shlex.quote(f"{plink_prefix}.fam")
-        gds_file = shlex.quote(f"{output_prefix}.gds")
-        grm_bin_file = shlex.quote(f"{kinship_matrix}.grm.bin")
-        grm_n_file = shlex.quote(f"{kinship_matrix}.grm.N.bin")
-        grm_id_file = shlex.quote(f"{kinship_matrix}.grm.id")
-        output_file = shlex.quote(f"{output_prefix}_pcair.txt")
-        variance_file = shlex.quote(f"{output_prefix}_variance.txt")
-        unrelated_file = shlex.quote(f"{output_prefix}_unrelated.txt")
+        bed_file = os.path.abspath(f"{plink_prefix}.bed")
+        bim_file = os.path.abspath(f"{plink_prefix}.bim")
+        fam_file = os.path.abspath(f"{plink_prefix}.fam")
+        gds_file = os.path.abspath(f"{output_prefix}.gds")
+        grm_bin_file = os.path.abspath(f"{kinship_matrix}.grm.bin")
+        grm_n_file = os.path.abspath(f"{kinship_matrix}.grm.N.bin")
+        grm_id_file = os.path.abspath(f"{kinship_matrix}.grm.id")
+        output_file = os.path.abspath(f"{output_prefix}_pcair.txt")
+        variance_file = os.path.abspath(f"{output_prefix}_variance.txt")
+        unrelated_file = os.path.abspath(f"{output_prefix}_unrelated.txt")
         
         r_script = f"""
-# Load required libraries
 suppressPackageStartupMessages({{
     library(GENESIS)
     library(SNPRelate)
     library(gdsfmt)
 }})
 
-# Convert PLINK to GDS format
-snpgdsBED2GDS(
-    bed.fn = {bed_file},
-    bim.fn = {bim_file}, 
-    fam.fn = {fam_file},
-    out.gdsfn = {gds_file}
-)
+snpgdsBED2GDS(bed.fn = "{bed_file}", bim.fn = "{bim_file}", fam.fn = "{fam_file}", out.gdsfn = "{gds_file}")
+gds <- snpgdsOpen("{gds_file}")
 
-# Open GDS file
-gds <- snpgdsOpen({gds_file})
-
-# Load kinship matrix from GCTA format
-# Read GRM binary file
-grm_bin <- file({grm_bin_file}, "rb")
-grm_n_file_handle <- file({grm_n_file}, "rb")
-
-# Read sample IDs
-sample_ids <- read.table({grm_id_file}, header=FALSE, stringsAsFactors=FALSE)
+grm_bin <- file("{grm_bin_file}", "rb")
+grm_n_file_handle <- file("{grm_n_file}", "rb")
+sample_ids <- read.table("{grm_id_file}", header=FALSE, stringsAsFactors=FALSE)
 n_samples <- nrow(sample_ids)
-
-# Read number of values (lower triangle including diagonal)
 n_values <- n_samples * (n_samples + 1) / 2
-
-# Read GRM values
 grm_values <- readBin(grm_bin, what="numeric", n=n_values, size=4)
 close(grm_bin)
 close(grm_n_file_handle)
 
-# Reconstruct full symmetric matrix
 kin_matrix <- matrix(0, nrow=n_samples, ncol=n_samples)
 idx <- 1
 for(i in 1:n_samples) {{
@@ -1483,113 +1421,52 @@ for(i in 1:n_samples) {{
         idx <- idx + 1
     }}
 }}
-
 rownames(kin_matrix) <- sample_ids$V2
 colnames(kin_matrix) <- sample_ids$V2
 
-# Run PC-AiR
-cat("Running PC-AiR analysis...\\n")
-pc_air <- pcair(
-    gds = gds,
-    kinobj = kin_matrix,
-    kin.thresh = {kin_threshold},
-    divobj = NULL,
-    div.thresh = {div_threshold},
-    num.cores = 1
-)
+pc_air <- pcair(gds = gds, kinobj = kin_matrix, kin.thresh = {kin_threshold}, divobj = NULL, div.thresh = {div_threshold}, num.cores = 1)
 
-# Extract PCs
 pcs <- pc_air$vectors[, 1:{n_pcs}, drop=FALSE]
 colnames(pcs) <- paste0("PC", 1:{n_pcs})
+output_df <- data.frame(IID = as.character(rownames(pcs)), pcs, stringsAsFactors = FALSE)
 
-# Save results with IID column
-output_df <- data.frame(
-    IID = as.character(rownames(pcs)),
-    pcs,
-    stringsAsFactors = FALSE
-)
+write.table(output_df, file = "{output_file}", quote = FALSE, row.names = FALSE, sep = "\\t")
+write.table(data.frame(variance = pc_air$values[1:{n_pcs}]), file = "{variance_file}", quote = FALSE, row.names = FALSE, sep = "\\t")
+write.table(data.frame(IID = as.character(pc_air$unrels)), file = "{unrelated_file}", quote = FALSE, row.names = FALSE, sep = "\\t")
 
-write.table(
-    output_df,
-    file = {output_file},
-    quote = FALSE,
-    row.names = FALSE,
-    sep = "\\t"
-)
-
-# Save variance explained
-write.table(
-    data.frame(variance = pc_air$values[1:{n_pcs}]),
-    file = {variance_file},
-    quote = FALSE,
-    row.names = FALSE,
-    sep = "\\t"
-)
-
-# Save unrelated set
-write.table(
-    data.frame(IID = as.character(pc_air$unrels)),
-    file = {unrelated_file},
-    quote = FALSE,
-    row.names = FALSE,
-    sep = "\\t"
-)
-
-cat("PC-AiR complete.\\n")
-cat(paste("Unrelated samples:", length(pc_air$unrels), "\\n"))
-cat(paste("Related samples:", length(pc_air$rels), "\\n"))
-
-# Close GDS
 snpgdsClose(gds)
 """
         
-        # Write R script to file
         r_script_file = f"{output_prefix}_pcair.R"
         with open(r_script_file, 'w') as f:
             f.write(r_script)
         
-        # Run R script
         if verbose:
-            logger.info("Running PC-AiR in R (this may take a while)...")
+            logger.info("Running PC-AiR in R...")
         
-        result = subprocess.run(
-            ['Rscript', r_script_file],
-            capture_output=True,
-            text=True
-        )
-        
+        result = subprocess.run(['Rscript', r_script_file], capture_output=True, text=True)
         if result.returncode != 0:
-            raise RuntimeError(f"PC-AiR calculation failed:\n{result.stderr}\n{result.stdout}")
+            raise RuntimeError(f"PC-AiR failed:\n{result.stderr}\n{result.stdout}")
         
-        # Read results
         pca_file = f"{output_prefix}_pcair.txt"
         if not os.path.exists(pca_file):
             raise RuntimeError(f"PC-AiR output file not found: {pca_file}")
         
         pca_df = pd.read_csv(pca_file, sep='\t')
-        
-        # Convert IID to string and set as index
         pca_df['IID'] = pca_df['IID'].astype(str)
         pca_df.set_index('IID', inplace=True)
         
-        # Read variance explained
-        if verbose:
-            variance_file = f"{output_prefix}_variance.txt"
-            if os.path.exists(variance_file):
-                variance = pd.read_csv(variance_file, sep='\t')
-                total_var = variance['variance'].sum()
-                var_explained = variance['variance'] / total_var
-                logger.info(f"Variance explained by first 5 PCs: {var_explained[:5].values}")
-                logger.info(f"Total variance explained by {n_pcs} PCs: {var_explained.sum():.3f}")
-            
-            # Read unrelated samples info
-            unrelated_file = f"{output_prefix}_unrelated.txt"
-            if os.path.exists(unrelated_file):
-                unrelated_df = pd.read_csv(unrelated_file, sep='\t')
-                logger.info(f"Number of unrelated samples: {len(unrelated_df)}")
-                logger.info(f"Total samples: {len(pca_df)}")
+        if verbose and os.path.exists(variance_file):
+            variance = pd.read_csv(variance_file, sep='\t')
+            var_explained = variance['variance'] / variance['variance'].sum()
+            logger.info(f"Variance explained by first 5 PCs: {var_explained[:5].values}")
         
         return pca_df
+        
+    finally:
+        if cleanup and temp_dir is not None:
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def calculate_grm_gcta(
