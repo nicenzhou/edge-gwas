@@ -9,6 +9,9 @@ matplotlib>=3.3.0,<4.0.0
 # Genetic data handling - REQUIRED
 pandas-plink>=2.0.0,<3.0.0
 
+# File format support - REQUIRED for full functionality
+cyvcf2>=0.30.0
+
 # Optional: Additional file format support
 # Uncomment the ones you need:
 
@@ -17,9 +20,6 @@ pandas-plink>=2.0.0,<3.0.0
 
 # For BGEN format (UK Biobank, etc.)
 # bgen-reader>=4.0.0
-
-# For VCF format
-# cyvcf2>=0.30.0
 
 # For advanced imputation
 # pysnptools>=0.5.0
