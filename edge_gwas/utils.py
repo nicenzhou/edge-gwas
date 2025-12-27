@@ -1237,8 +1237,9 @@ def calculate_pca_sklearn(
 
 
 def calculate_pca_plink(
-    plink_prefix: str,
+    file_prefix: str,
     n_pcs: int = 10,
+    file_format: str = 'bfile',
     output_prefix: Optional[str] = None,
     maf_threshold: Optional[float] = 0.01,
     ld_window: Optional[int] = 50,
@@ -1247,7 +1248,36 @@ def calculate_pca_plink(
     approx: bool = False,
     verbose: bool = True
 ) -> pd.DataFrame:
-    """Calculate principal components using PLINK2."""
+    """
+    Calculate principal components using PLINK2.
+    
+    Args:
+        file_prefix: Prefix for input files
+        n_pcs: Number of principal components to calculate
+        file_format: Input file format ('bfile', 'pfile', 'vcf', 'bgen'). Default: 'bfile'
+                    - 'bfile': PLINK1 binary (.bed/.bim/.fam)
+                    - 'pfile': PLINK2 binary (.pgen/.pvar/.psam)
+                    - 'vcf': VCF file (.vcf or .vcf.gz)
+                    - 'bgen': BGEN file (.bgen)
+        output_prefix: Prefix for output files (default: temp directory)
+        maf_threshold: MAF threshold for variant filtering (default: 0.01, None to skip)
+        ld_window: Window size for LD pruning in variant count (default: 50, None to skip)
+        ld_step: Step size for LD pruning in variant count (default: 5, None to skip)
+        ld_r2: R² threshold for LD pruning (default: 0.2, None to skip)
+        approx: Use approximate PCA for large cohorts
+        verbose: Print progress information
+        
+    Returns:
+        DataFrame with IID as index and PC1, PC2, ..., PCn columns
+        
+    Note:
+        Requires PLINK2 to be installed and available in PATH.
+        Download from: https://www.cog-genomics.org/plink/2.0/
+    """
+    # Validate file format
+    valid_formats = ['bfile', 'pfile', 'vcf', 'bgen']
+    if file_format not in valid_formats:
+        raise ValueError(f"file_format must be one of {valid_formats}, got '{file_format}'")
     
     if output_prefix is None:
         temp_dir = tempfile.mkdtemp()
@@ -1261,15 +1291,26 @@ def calculate_pca_plink(
         if verbose:
             method = "approximate" if approx else "exact"
             logger.info(f"Calculating {n_pcs} PCs using PLINK2 ({method} method)...")
+            logger.info(f"Input format: {file_format}")
             if maf_threshold is not None:
                 logger.info(f"MAF threshold: {maf_threshold}")
             if ld_window is not None and ld_r2 is not None:
                 logger.info(f"LD pruning: window={ld_window}, step={ld_step}, r²<{ld_r2}")
         
+        # Build file input flag based on format
+        if file_format == 'bfile':
+            file_flag = ['--bfile', file_prefix]
+        elif file_format == 'pfile':
+            file_flag = ['--pfile', file_prefix]
+        elif file_format == 'vcf':
+            file_flag = ['--vcf', file_prefix]
+        elif file_format == 'bgen':
+            file_flag = ['--bgen', file_prefix]
+        
         # Step 1: LD pruning (optional)
         if ld_window is not None and ld_step is not None and ld_r2 is not None:
             prune_prefix = f"{output_prefix}_pruned"
-            cmd_prune = ['plink2', '--bfile', plink_prefix]
+            cmd_prune = ['plink2'] + file_flag
             
             if maf_threshold is not None:
                 cmd_prune.extend(['--maf', str(maf_threshold)])
@@ -1293,7 +1334,7 @@ def calculate_pca_plink(
             extract_file = None
         
         # Step 2: Calculate PCA
-        cmd_pca = ['plink2', '--bfile', plink_prefix]
+        cmd_pca = ['plink2'] + file_flag
         
         if maf_threshold is not None and extract_file is None:
             cmd_pca.extend(['--maf', str(maf_threshold)])
