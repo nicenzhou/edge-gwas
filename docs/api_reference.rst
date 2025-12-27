@@ -487,37 +487,43 @@ Principal Component Analysis (NEW in v0.1.1)
 calculate_pca_plink()
 """""""""""""""""""""
 
-Calculate principal components using PLINK2.
+**UPDATED in v0.1.1** - Calculate principal components using PLINK2 with support for multiple input formats.
 
 .. code-block:: python
 
    from edge_gwas.utils import calculate_pca_plink
    
    pca_df = calculate_pca_plink(
-       plink_prefix='genotypes',
+       file_prefix='genotypes',
        n_pcs=10,
+       file_format='bfile',
        output_prefix=None,
        maf_threshold=0.01,
        ld_window=50,
        ld_step=5,
        ld_r2=0.2,
        approx=False,
-       approx_samples=5000,
        verbose=True
    )
 
 **Parameters:**
 
-* ``plink_prefix`` (str): Prefix for PLINK binary files
+* ``file_prefix`` (str): Prefix for input files (renamed from plink_prefix)
 * ``n_pcs`` (int): Number of principal components to calculate (default: 10)
+* ``file_format`` (str): **NEW in v0.1.1** - Input file format (default: 'bfile'). Options:
+  
+  * ``'bfile'``: PLINK1 binary (.bed/.bim/.fam)
+  * ``'pfile'``: PLINK2 binary (.pgen/.pvar/.psam)
+  * ``'vcf'``: VCF file (.vcf or .vcf.gz)
+  * ``'bgen'``: BGEN file (.bgen)
+
 * ``output_prefix`` (str, optional): Prefix for output files (default: temp directory)
-* ``maf_threshold`` (float): MAF threshold for variant filtering (default: 0.01)
-* ``ld_window`` (int): Window size for LD pruning in kb (default: 50)
-* ``ld_step`` (int): Step size for LD pruning (default: 5)
-* ``ld_r2`` (float): R² threshold for LD pruning (default: 0.2)
+* ``maf_threshold`` (float, optional): **UPDATED** - MAF threshold for variant filtering (default: 0.01, None to skip)
+* ``ld_window`` (int, optional): **UPDATED** - Window size for LD pruning in variant count (default: 50, None to skip LD pruning)
+* ``ld_step`` (int, optional): **UPDATED** - Step size for LD pruning (default: 5, None to skip LD pruning)
+* ``ld_r2`` (float, optional): **UPDATED** - R² threshold for LD pruning (default: 0.2, None to skip LD pruning)
 * ``approx`` (bool): Use approximate PCA for large cohorts (default: False)
-* ``approx_samples`` (int): Number of samples for approximate PCA (default: 5000)
-* ``verbose`` (bool): Print progress information
+* ``verbose`` (bool): Print progress information (default: True)
 
 **Returns:**
 
@@ -531,22 +537,43 @@ Requires PLINK2 to be installed. Install with:
 
    edge-gwas-install-tools
 
+**Changes from v0.1.0:**
+
+* Added ``file_format`` parameter for multiple input formats
+* Renamed ``plink_prefix`` to ``file_prefix``
+* MAF and LD parameters now optional (set to None to skip)
+* Removed ``approx_samples`` parameter (PLINK2 handles automatically)
+* Fixed output parsing to skip header lines
+
 **Example:**
 
 .. code-block:: python
 
-   # Standard PCA for <5000 samples
+   # PLINK1 binary format (default, backward compatible)
    pca_df = calculate_pca_plink('genotypes', n_pcs=10)
    
-   # Approximate PCA for large cohorts (>5000 samples)
+   # PLINK2 binary format
    pca_df = calculate_pca_plink(
        'genotypes', 
-       n_pcs=20, 
-       approx=True, 
-       approx_samples=5000
+       n_pcs=10, 
+       file_format='pfile'
    )
    
-   print(f"Calculated {pca_df.shape[1]} PCs for {len(pca_df)} samples")
+   # VCF file
+   pca_df = calculate_pca_plink(
+       'mydata.vcf.gz', 
+       n_pcs=10, 
+       file_format='vcf'
+   )
+   
+   # Skip LD pruning for small datasets
+   pca_df = calculate_pca_plink(
+       'genotypes', 
+       n_pcs=10,
+       ld_window=None,
+       ld_step=None,
+       ld_r2=None
+   )
 
 calculate_pca_pcair()
 """""""""""""""""""""
@@ -571,27 +598,37 @@ Calculate PC-AiR (Principal Components - Analysis in Related samples).
 
 **Parameters:**
 
-* ``plink_prefix`` (str): Prefix for PLINK binary files
+* ``plink_prefix`` (str): Prefix for PLINK binary files (.bed/.bim/.fam)
 * ``n_pcs`` (int): Number of principal components to calculate (default: 10)
-* ``kinship_matrix`` (str, optional): Path to GCTA GRM prefix (if None, will compute automatically)
-* ``divergence_matrix`` (str, optional): Path to divergence matrix (optional)
-* ``output_prefix`` (str, optional): Prefix for output files
-* ``kin_threshold`` (float): Kinship threshold for defining relatedness (default: 0.0884 ~ 2nd degree)
+* ``kinship_matrix`` (str, optional): Path to kinship matrix file (GCTA GRM format prefix). If None, will compute using calculate_grm_gcta()
+* ``divergence_matrix`` (str, optional): Path to divergence matrix file (optional)
+* ``output_prefix`` (str, optional): Prefix for output files (default: temp directory)
+* ``kin_threshold`` (float): Kinship threshold for defining relatedness (default: 0.0884, ~ 3rd degree relatives)
 * ``div_threshold`` (float): Divergence threshold (default: -0.0884)
-* ``maf_threshold`` (float): MAF threshold for GRM calculation if kinship_matrix is None
-* ``verbose`` (bool): Print progress information
+* ``maf_threshold`` (float): MAF threshold for GRM calculation if kinship_matrix is None (default: 0.01)
+* ``verbose`` (bool): Print progress information (default: True)
 
 **Returns:**
 
-* ``pandas.DataFrame``: PC-AiR results with IID as index and PC1, PC2, ..., PCn as columns
+* ``pandas.DataFrame``: PCA results with IID as index and PC1, PC2, ..., PCn as columns
 
 **Note:**
 
-Requires R with GENESIS, SNPRelate, and gdsfmt packages. Install with:
+Requires R with GENESIS package installed:
 
 .. code-block:: bash
 
    edge-gwas-install-tools
+
+Or install manually in R:
+
+.. code-block:: r
+
+   if (!requireNamespace("BiocManager", quietly = TRUE))
+       install.packages("BiocManager")
+   BiocManager::install("GENESIS")
+   BiocManager::install("SNPRelate")
+   BiocManager::install("gdsfmt")
 
 **Reference:**
 
@@ -601,19 +638,26 @@ Conomos et al. (2015) Genetic Epidemiology 39(4):276-293
 
 .. code-block:: python
 
-   # PC-AiR for related samples
-   pca_df = calculate_pca_pcair(
-       plink_prefix='genotypes',
-       n_pcs=10,
-       kin_threshold=0.0884
-   )
+   # PC-AiR with automatic GRM calculation
+   pca_df = calculate_pca_pcair('genotypes', n_pcs=10)
    
    # PC-AiR with pre-computed GRM
    pca_df = calculate_pca_pcair(
-       plink_prefix='genotypes',
+       'genotypes',
        n_pcs=10,
        kinship_matrix='grm_prefix'
    )
+   
+   # Custom kinship threshold (2nd degree relatives)
+   pca_df = calculate_pca_pcair(
+       'genotypes',
+       n_pcs=10,
+       kin_threshold=0.177
+   )
+   
+   # Use PC-AiR results as covariates
+   pheno = attach_pcs_to_phenotype(pheno, pca_df, n_pcs=10)
+   covariates = ['age', 'sex'] + get_pc_covariate_list(10)
 
 calculate_pca_sklearn()
 """""""""""""""""""""""
@@ -657,7 +701,7 @@ This is a basic PCA without correction for relatedness. For robust PCA, use ``ca
 attach_pcs_to_phenotype()
 """"""""""""""""""""""""""
 
-Attach principal components to phenotype DataFrame.
+**UPDATED in v0.1.1** - Attach principal components to phenotype DataFrame with option to drop missing samples.
 
 .. code-block:: python
 
@@ -669,6 +713,7 @@ Attach principal components to phenotype DataFrame.
        n_pcs=10,
        pc_prefix='PC',
        sample_id_col=None,
+       drop_na=False,
        verbose=True
    )
 
@@ -678,12 +723,23 @@ Attach principal components to phenotype DataFrame.
 * ``pca_df`` (pandas.DataFrame): PCA DataFrame with IID as index
 * ``n_pcs`` (int): Number of PCs to attach (default: 10)
 * ``pc_prefix`` (str): Prefix for PC column names (default: 'PC')
-* ``sample_id_col`` (str, optional): Column name in phenotype_df for sample IDs (if None, uses index)
-* ``verbose`` (bool): Print information about merging
+* ``sample_id_col`` (str, optional): Column name in phenotype_df for sample IDs (None = use index)
+* ``drop_na`` (bool): **NEW in v0.1.1** - If True, remove samples with missing PCs after merging (default: False)
+* ``verbose`` (bool): Print information about merging (default: True)
 
 **Returns:**
 
 * ``pandas.DataFrame``: Phenotype DataFrame with PC columns added
+
+**Note:**
+
+The function automatically handles type mismatches between sample IDs (e.g., strings vs integers).
+
+**Changes from v0.1.0:**
+
+* Added ``drop_na`` parameter to remove samples without PCs
+* Improved sample ID matching with automatic type conversion
+* Fixed duplicate column issues during merge
 
 **Example:**
 
@@ -692,12 +748,39 @@ Attach principal components to phenotype DataFrame.
    # Calculate PCA
    pca_df = calculate_pca_plink('genotypes', n_pcs=10)
    
-   # Attach to phenotype (when phenotype has IID as index)
-   pheno_with_pcs = attach_pcs_to_phenotype(pheno_df, pca_df, n_pcs=10)
+   # Attach PCs, keep samples with missing PCs (default)
+   pheno = attach_pcs_to_phenotype(pheno, pca_df, n_pcs=10)
    
-   # Attach to phenotype (when phenotype has IID as column)
-   pheno_with_pcs = attach_pcs_to_phenotype(
-       pheno_df, pca_df, n_pcs=10, sample_id_col='IID'
+   # Attach PCs and remove samples without PCs
+   pheno = attach_pcs_to_phenotype(
+       pheno, 
+       pca_df, 
+       n_pcs=10, 
+       drop_na=True
+   )
+   
+   # When phenotype has IID as column
+   pheno = attach_pcs_to_phenotype(
+       pheno, 
+       pca_df, 
+       n_pcs=10,
+       sample_id_col='IID',
+       drop_na=True
+   )
+   
+   # Complete workflow with PCs as covariates
+   pca_df = calculate_pca_plink('genotypes', n_pcs=10)
+   pheno = attach_pcs_to_phenotype(pheno, pca_df, n_pcs=10, drop_na=True)
+   
+   # Generate PC covariate list
+   from edge_gwas.utils import get_pc_covariate_list
+   covariates = ['age', 'sex'] + get_pc_covariate_list(10)
+   
+   # Run EDGE analysis with PCs
+   alpha_df, gwas_df = edge.run_full_analysis(
+       train_g, train_p, test_g, test_p,
+       outcome='disease',
+       covariates=covariates
    )
 
 get_pc_covariate_list()
@@ -1087,13 +1170,19 @@ filter_variants_by_hwe()
 
 **Parameters:**
 
-* ``genotype_df`` (pandas.DataFrame): Genotype data
-* ``hwe_threshold`` (float): Minimum HWE p-value threshold
-* ``verbose`` (bool): Print filtering information
+* ``genotype_df`` (pandas.DataFrame): Genotype DataFrame (samples × variants)
+* ``hwe_threshold`` (float): Minimum HWE p-value threshold (default: 1e-6)
+* ``verbose`` (bool): Print filtering information (default: True)
 
 **Returns:**
 
-* ``pandas.DataFrame``: Filtered genotype data
+* ``pandas.DataFrame``: Filtered genotype DataFrame
+
+**Note:**
+
+* Variants with HWE p-value < threshold are removed
+* Variants with insufficient data for HWE test (NaN) are kept
+* Common thresholds: 1e-6 (stringent), 1e-4 (moderate), 1e-3 (lenient)
 
 **Example:**
 
@@ -1101,6 +1190,23 @@ filter_variants_by_hwe()
 
    # Filter variants deviating from HWE
    geno = filter_variants_by_hwe(geno, hwe_threshold=1e-6)
+   
+   # More lenient threshold
+   geno = filter_variants_by_hwe(geno, hwe_threshold=1e-4)
+   
+   # Complete QC workflow
+   from edge_gwas.utils import (
+       filter_variants_by_maf,
+       filter_variants_by_missing,
+       filter_variants_by_hwe
+   )
+   
+   # Apply multiple filters
+   geno = filter_variants_by_maf(geno, min_maf=0.01)
+   geno = filter_variants_by_missing(geno, max_missing=0.05)
+   geno = filter_variants_by_hwe(geno, hwe_threshold=1e-6)
+   
+   print(f"Variants after QC: {geno.shape[1]}")
 
 check_case_control_balance()
 """"""""""""""""""""""""""""
@@ -1155,22 +1261,181 @@ calculate_hwe_pvalues()
 
 **Parameters:**
 
-* ``genotype_df`` (pandas.DataFrame): Genotype data
-* ``verbose`` (bool): Print calculation information
+* ``genotype_df`` (pandas.DataFrame): Genotype DataFrame (samples × variants)
+* ``verbose`` (bool): Print calculation information (default: True)
 
 **Returns:**
 
 * ``pandas.Series``: HWE p-values for each variant
 
+**Note:**
+
+* Only uses hard calls (0, 1, 2) for HWE calculation
+* Requires minimum 10 samples per variant
+* Uses chi-square test with minimum expected count of 5
+* Variants with insufficient data return NaN
+
 **Example:**
 
 .. code-block:: python
 
+   # Calculate HWE p-values
    hwe_pvals = calculate_hwe_pvalues(genotype_df)
    
    # Find variants deviating from HWE
    hwe_violations = hwe_pvals[hwe_pvals < 1e-6]
-   print(f"Variants violating HWE: {len(hwe_violations)}")
+   print(f"Variants violating HWE (p < 1e-6): {len(hwe_violations)}")
+   
+   # Summary statistics
+   print(f"Mean HWE p-value: {hwe_pvals.mean():.4f}")
+   print(f"Median HWE p-value: {hwe_pvals.median():.4f}")
+
+impute_covariates()
+"""""""""""""""""""
+
+Impute missing values in covariates using various methods.
+
+.. code-block:: python
+
+   from edge_gwas.utils import impute_covariates
+   
+   pheno_imputed = impute_covariates(
+       phenotype_df,
+       covariate_cols=['age', 'bmi', 'PC1', 'PC2'],
+       method='median',
+       drop_na=False,
+       verbose=True
+   )
+
+**Parameters:**
+
+* ``phenotype_df`` (pandas.DataFrame): Phenotype DataFrame with covariates
+* ``covariate_cols`` (list): List of covariate column names to impute
+* ``method`` (str): Imputation method (default: 'median'). Options:
+  
+  * ``'drop'``: Remove all rows with any missing values
+  * ``'mean'``: Replace with mean (numeric only)
+  * ``'median'``: Replace with median (numeric only)
+  * ``'mode'``: Replace with mode (works for categorical)
+  * ``'knn'``: K-Nearest Neighbors imputation (k=5)
+  * ``'missforest'``: MissForest algorithm (requires missingpy)
+  * ``'mice'``: Multiple Imputation by Chained Equations (requires missingpy)
+
+* ``drop_na`` (bool): If True, drop rows with any remaining missing values after imputation (default: False)
+* ``verbose`` (bool): Print imputation information (default: True)
+
+**Returns:**
+
+* ``pandas.DataFrame``: DataFrame with imputed covariates
+
+**Note:**
+
+For 'missforest' and 'mice', install missingpy:
+
+.. code-block:: bash
+
+   pip install missingpy
+
+**Example:**
+
+.. code-block:: python
+
+   # Simple median imputation
+   pheno = impute_covariates(
+       pheno, 
+       covariate_cols=['age', 'bmi'],
+       method='median'
+   )
+   
+   # KNN imputation for multiple covariates
+   pheno = impute_covariates(
+       pheno,
+       covariate_cols=['age', 'bmi', 'PC1', 'PC2', 'PC3'],
+       method='knn'
+   )
+   
+   # Drop rows with missing values
+   pheno = impute_covariates(
+       pheno,
+       covariate_cols=['age', 'sex'],
+       method='drop'
+   )
+
+validate_and_align_data()
+""""""""""""""""""""""""""
+
+Validate and align genotype and phenotype data by sample IDs.
+
+.. code-block:: python
+
+   from edge_gwas.utils import validate_and_align_data
+   
+   geno_aligned, pheno_aligned = validate_and_align_data(
+       genotype_df,
+       phenotype_df,
+       outcome_col='disease',
+       covariate_cols=['age', 'sex', 'PC1', 'PC2'],
+       geno_id_col=None,
+       pheno_id_col=None,
+       keep_only_common=True,
+       verbose=True
+   )
+
+**Parameters:**
+
+* ``genotype_df`` (pandas.DataFrame): Genotype DataFrame (samples × variants)
+* ``phenotype_df`` (pandas.DataFrame): Phenotype DataFrame
+* ``outcome_col`` (str, optional): Name of outcome column (for validation)
+* ``covariate_cols`` (list, optional): List of covariate columns (for validation)
+* ``geno_id_col`` (str, optional): Column name for sample IDs in genotype_df (None = use index)
+* ``pheno_id_col`` (str, optional): Column name for sample IDs in phenotype_df (None = use index)
+* ``keep_only_common`` (bool): If True, keep only samples present in both datasets; if False, raise error if samples don't match (default: True)
+* ``verbose`` (bool): Print validation information (default: True)
+
+**Returns:**
+
+* ``tuple``: (aligned_genotype_df, aligned_phenotype_df)
+  
+  * Both DataFrames have matching samples in the same order
+  * Sample IDs are set as index
+  * Only common samples included (if keep_only_common=True)
+
+**Note:**
+
+Validation checks include:
+
+* Duplicate sample IDs
+* Common samples between datasets
+* Required columns exist
+* Missing values in required columns
+* Type mismatches between sample IDs (automatically handled)
+
+**Example:**
+
+.. code-block:: python
+
+   # Basic usage - keep only common samples
+   geno, pheno = validate_and_align_data(
+       genotype_df=geno,
+       phenotype_df=pheno,
+       keep_only_common=True
+   )
+   
+   # Validate with outcome and covariates
+   geno, pheno = validate_and_align_data(
+       genotype_df=geno,
+       phenotype_df=pheno,
+       outcome_col='disease',
+       covariate_cols=['age', 'sex', 'PC1', 'PC2'],
+       verbose=True
+   )
+   
+   # Require perfect match (error if any mismatch)
+   geno, pheno = validate_and_align_data(
+       genotype_df=geno,
+       phenotype_df=pheno,
+       keep_only_common=False
+   )
 
 Statistical Functions
 ~~~~~~~~~~~~~~~~~~~~~
@@ -2077,6 +2342,12 @@ Utilities Module (edge_gwas.utils)
    * - ``merge_alpha_with_gwas()``
      - Merge GWAS and alpha results
      - Merged DataFrame
+   * - ``impute_covariates()``
+     - Impute missing covariate values
+     - Imputed DataFrame
+   * - ``validate_and_align_data()``
+     - Validate and align genotype/phenotype
+     - (aligned_geno, aligned_pheno)
 
 **Statistical Functions:**
 
