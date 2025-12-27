@@ -568,8 +568,51 @@ class EDGEAnalysis:
     ) -> pd.DataFrame:
         """
         Fit EDGE-encoded model.
+        
+        Args:
+            edge_data: EDGE-encoded genotype data
+            phenotype_df: DataFrame containing outcome and covariates
+            outcome: Name of outcome variable
+            covariates: List of covariate names
+            grm: Optional aligned GRM matrix for mixed model
+            grm_sample_ids: Sample IDs corresponding to GRM rows
+            
+        Returns:
+            DataFrame with model results
         """
-        # ... [previous code remains the same until model fitting] ...
+        # Merge with phenotype data
+        merged_df = pd.merge(
+            edge_data.to_frame(),
+            phenotype_df,
+            left_index=True,
+            right_index=True
+        )
+        merged_df = merged_df.dropna()
+        
+        # If GRM is provided, subset to common samples
+        if grm is not None and grm_sample_ids is not None:
+            merged_df = merged_df.loc[merged_df.index.intersection(grm_sample_ids)]
+            if len(merged_df) == 0:
+                logger.warning(f"No samples remain after GRM alignment for {edge_data.name}")
+                return pd.DataFrame()
+        
+        snp_name = edge_data.name
+        
+        # Prepare variables
+        X = merged_df[[snp_name] + covariates]
+        y = merged_df[outcome]
+        
+        # Apply outcome transformation if specified (for continuous outcomes)
+        if self.outcome_type == 'continuous' and self.outcome_transform is not None:
+            try:
+                y = self._transform_outcome(y)
+            except Exception as e:
+                logger.warning(f"Outcome transformation failed for {snp_name}: {str(e)}")
+                self.skipped_snps.append(snp_name)
+                return pd.DataFrame()
+        
+        # Add constant
+        X = sm.add_constant(X)
         
         # Apply GRM if provided
         if grm is not None and grm_sample_ids is not None:
@@ -634,6 +677,26 @@ class EDGEAnalysis:
                 logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
                 self.skipped_snps.append(snp_name)
                 return pd.DataFrame()
+        
+        # Extract results
+        try:
+            result_df = pd.DataFrame({
+                'snp': [snp_name],
+                'coef': [result.params[snp_name]],
+                'std_err': [result.bse[snp_name]],
+                'stat': [result.tvalues[snp_name]],
+                'pval': [result.pvalues[snp_name]],
+                'conf_int_low': [result.conf_int().loc[snp_name, 0]],
+                'conf_int_high': [result.conf_int().loc[snp_name, 1]],
+                'n_samples': [len(y)]
+            })
+            
+            return result_df
+            
+        except Exception as e:
+            logger.warning(f"Result extraction failed for {snp_name}: {str(e)}")
+            self.skipped_snps.append(snp_name)
+            return pd.DataFrame()
     
     def calculate_alpha(
         self,
