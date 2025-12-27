@@ -821,119 +821,317 @@ class EDGEAnalysis:
         return self.alpha_values
     
     def apply_alpha(
-        self,
-        genotype_data: pd.DataFrame,
-        phenotype_df: pd.DataFrame,
-        outcome: str,
-        covariates: List[str],
-        alpha_values: Optional[pd.DataFrame] = None,
-        grm_matrix: Optional[np.ndarray] = None,
-        grm_sample_ids: Optional[pd.DataFrame] = None
-    ) -> pd.DataFrame:
-        """
-        Apply EDGE alpha values to test data and perform GWAS.
+    self,
+    genotype_data: pd.DataFrame,
+    phenotype_df: pd.DataFrame,
+    outcome: str,
+    covariates: List[str],
+    alpha_values: Optional[pd.DataFrame] = None,
+    grm_matrix: Optional[np.ndarray] = None,
+    grm_sample_ids: Optional[pd.DataFrame] = None,
+    variant_info: Optional[pd.DataFrame] = None,
+    split_variant_id: bool = False,
+    variant_id_pattern: str = 'chr:pos:ref:alt'
+) -> pd.DataFrame:
+    """
+    Apply EDGE alpha values to test data and perform GWAS.
+    
+    Args:
+        genotype_data: DataFrame with genotypes (0, 1, 2 encoding)
+                      Index should be sample IDs
+        phenotype_df: DataFrame with outcome and covariates
+                     Index should be sample IDs
+        outcome: Name of outcome variable in phenotype_df
+        covariates: List of covariate names in phenotype_df
+        alpha_values: DataFrame with alpha values (from calculate_alpha)
+                     If None, uses self.alpha_values from previous calculation
+        grm_matrix: Optional GRM matrix from GCTA (for population structure control)
+        grm_sample_ids: DataFrame with FID and IID corresponding to GRM rows
+        variant_info: Optional DataFrame with variant information
+                     (columns: variant_id, ref_allele, alt_allele, chrom, pos)
+        split_variant_id: If True, parse variant_id to extract chr, pos, ref, alt
+        variant_id_pattern: Pattern for splitting variant_id. Options:
+                           - 'chr:pos' (e.g., '1:12345')
+                           - 'chr:pos:ref:alt' (e.g., '1:12345:A:T')
+                           - 'chr:pos_ref_alt' (e.g., '1:12345_A_T')
+                           - 'chr_pos_ref_alt' (e.g., '1_12345_A_T')
         
-        Args:
-            genotype_data: DataFrame with genotypes (0, 1, 2 encoding)
-                          Index should be sample IDs
-            phenotype_df: DataFrame with outcome and covariates
-                         Index should be sample IDs
-            outcome: Name of outcome variable in phenotype_df
-            covariates: List of covariate names in phenotype_df
-            alpha_values: DataFrame with alpha values (from calculate_alpha)
-                         If None, uses self.alpha_values from previous calculation
-            grm_matrix: Optional GRM matrix from GCTA (for population structure control)
-            grm_sample_ids: DataFrame with FID and IID corresponding to GRM rows
-            
-        Returns:
-            DataFrame with GWAS results
-            Columns: variant_id, coef, std_err, stat, pval, conf_int_low, 
-                    conf_int_high, alpha_value, n_samples
-        """
-        # Use provided alpha values or stored values
-        if alpha_values is None:
-            if self.alpha_values is None:
-                raise ValueError("No alpha values provided. Run calculate_alpha first or provide alpha_values.")
-            alpha_values = self.alpha_values
-        
-        # Check that alpha_values has required columns
-        required_cols = ['variant_id', 'alpha_value']
-        if not all(col in alpha_values.columns for col in required_cols):
-            raise ValueError(f"alpha_values must contain columns: {required_cols}")
-        
-        # Create alpha lookup dictionary
-        alpha_dict = dict(zip(alpha_values['variant_id'], alpha_values['alpha_value']))
-        
-        # Prepare GRM if provided
-        aligned_grm = None
-        grm_ids = None
-        if grm_matrix is not None and grm_sample_ids is not None:
-            if self.verbose:
-                logger.info(f"Incorporating GRM for population structure control")
-            aligned_grm, grm_ids = self._prepare_grm_for_samples(
-                genotype_data.index,
-                grm_matrix,
-                grm_sample_ids
-            )
-        
-        self.skipped_snps = []
-        gwas_results = []
-        
-        n_variants = genotype_data.shape[1]
-        
-        for idx, variant_id in enumerate(genotype_data.columns):
-            if self.verbose and (idx + 1) % 100 == 0:
-                logger.info(f"Processing variant {idx + 1}/{n_variants}")
-            
-            # Check if alpha value exists for this variant
-            if variant_id not in alpha_dict:
-                logger.warning(f"No alpha value found for {variant_id}, skipping.")
-                self.skipped_snps.append(variant_id)
-                continue
-            
-            alpha_value = alpha_dict[variant_id]
-            
-            # Skip if alpha is NaN
-            if pd.isna(alpha_value):
-                logger.warning(f"Alpha value is NaN for {variant_id}, skipping.")
-                self.skipped_snps.append(variant_id)
-                continue
-            
-            # Get genotype column
-            geno = genotype_data[variant_id].copy()
-            
-            # Apply EDGE encoding: 0->0, 1->alpha, 2->1
-            edge_encoded = geno.replace({0: 0.0, 1: alpha_value, 2: 1.0})
-            edge_encoded.name = variant_id
-            
-            # Fit EDGE model with optional GRM
-            result_df = self._fit_edge_model(
-                edge_encoded, phenotype_df, outcome, covariates, aligned_grm, grm_ids
-            )
-            
-            if result_df.empty:
-                continue
-            
-            # Add alpha value to results
-            result_df['alpha_value'] = alpha_value
-            result_df['variant_id'] = variant_id
-            
-            gwas_results.append(result_df)
-        
-        if not gwas_results:
-            logger.warning("No variants were successfully analyzed.")
-            return pd.DataFrame()
-        
-        gwas_df = pd.concat(gwas_results, ignore_index=True)
-        
+    Returns:
+        DataFrame with GWAS results including LocusZoom-required columns:
+        - MarkerName (variant_id)
+        - CHR (chrom)
+        - POS (pos)
+        - Allele1 (ref_allele)
+        - Allele2 (alt_allele)
+        - Effect (coef)
+        - StdErr (std_err)
+        - P-value (pval)
+        - MAF (maf)
+        - EAF (eaf)
+        - alpha_value
+        - n_samples
+    """
+    # Use provided alpha values or stored values
+    if alpha_values is None:
+        if self.alpha_values is None:
+            raise ValueError("No alpha values provided. Run calculate_alpha first or provide alpha_values.")
+        alpha_values = self.alpha_values
+    
+    # Check that alpha_values has required columns
+    required_cols = ['variant_id', 'alpha_value']
+    if not all(col in alpha_values.columns for col in required_cols):
+        raise ValueError(f"alpha_values must contain columns: {required_cols}")
+    
+    # Create alpha lookup dictionary
+    alpha_dict = dict(zip(alpha_values['variant_id'], alpha_values['alpha_value']))
+    
+    # Prepare GRM if provided
+    aligned_grm = None
+    grm_ids = None
+    if grm_matrix is not None and grm_sample_ids is not None:
         if self.verbose:
-            logger.info(f"EDGE GWAS complete. Analyzed {len(gwas_results)} variants.")
-            logger.info(f"Skipped {len(self.skipped_snps)} variants.")
-            if self.outcome_transform:
-                logger.info(f"Outcome transformation applied: {self.outcome_transform}")
-            logger.info(f"OLS optimization method used: {self.ols_method}")
+            logger.info(f"Incorporating GRM for population structure control")
+        aligned_grm, grm_ids = self._prepare_grm_for_samples(
+            genotype_data.index,
+            grm_matrix,
+            grm_sample_ids
+        )
+    
+    self.skipped_snps = []
+    gwas_results = []
+    
+    n_variants = genotype_data.shape[1]
+    
+    for idx, variant_id in enumerate(genotype_data.columns):
+        if self.verbose and (idx + 1) % 100 == 0:
+            logger.info(f"Processing variant {idx + 1}/{n_variants}")
         
-        return gwas_df
+        # Check if alpha value exists for this variant
+        if variant_id not in alpha_dict:
+            logger.warning(f"No alpha value found for {variant_id}, skipping.")
+            self.skipped_snps.append(variant_id)
+            continue
+        
+        alpha_value = alpha_dict[variant_id]
+        
+        # Skip if alpha is NaN
+        if pd.isna(alpha_value):
+            logger.warning(f"Alpha value is NaN for {variant_id}, skipping.")
+            self.skipped_snps.append(variant_id)
+            continue
+        
+        # Get genotype column
+        geno = genotype_data[variant_id].copy()
+        
+        # Apply EDGE encoding: 0->0, 1->alpha, 2->1
+        edge_encoded = geno.replace({0: 0.0, 1: alpha_value, 2: 1.0})
+        edge_encoded.name = variant_id
+        
+        # Fit EDGE model with optional GRM
+        result_df = self._fit_edge_model(
+            edge_encoded, phenotype_df, outcome, covariates, aligned_grm, grm_ids
+        )
+        
+        if result_df.empty:
+            continue
+        
+        # Calculate frequencies
+        valid_geno = geno.dropna()
+        if len(valid_geno) > 0:
+            # EAF (Effect Allele Frequency) = ALT allele frequency
+            eaf = (2 * (valid_geno == 2).sum() + (valid_geno == 1).sum()) / (2 * len(valid_geno))
+            # MAF (Minor Allele Frequency)
+            maf = min(eaf, 1 - eaf)
+        else:
+            eaf = np.nan
+            maf = np.nan
+        
+        # Parse variant info
+        chrom = None
+        pos = None
+        ref_allele = None
+        alt_allele = None
+        
+        # Try to get from variant_info first
+        if variant_info is not None and variant_id in variant_info.index:
+            if 'chrom' in variant_info.columns:
+                chrom = variant_info.loc[variant_id, 'chrom']
+            if 'pos' in variant_info.columns:
+                pos = variant_info.loc[variant_id, 'pos']
+            if 'ref_allele' in variant_info.columns:
+                ref_allele = variant_info.loc[variant_id, 'ref_allele']
+            if 'alt_allele' in variant_info.columns:
+                alt_allele = variant_info.loc[variant_id, 'alt_allele']
+        
+        # Try to get from alpha_values if not in variant_info
+        if variant_id in alpha_values['variant_id'].values:
+            alpha_row = alpha_values[alpha_values['variant_id'] == variant_id].iloc[0]
+            if chrom is None and 'chrom' in alpha_values.columns:
+                chrom = alpha_row['chrom']
+            if pos is None and 'pos' in alpha_values.columns:
+                pos = alpha_row['pos']
+            if ref_allele is None and 'ref_allele' in alpha_values.columns:
+                ref_allele = alpha_row['ref_allele']
+            if alt_allele is None and 'alt_allele' in alpha_values.columns:
+                alt_allele = alpha_row['alt_allele']
+        
+        # If split_variant_id is True, parse variant_id
+        if split_variant_id:
+            try:
+                chrom_parsed, pos_parsed, ref_parsed, alt_parsed = self._parse_variant_id(
+                    variant_id, variant_id_pattern
+                )
+                # Use parsed values if not already available
+                if chrom is None:
+                    chrom = chrom_parsed
+                if pos is None:
+                    pos = pos_parsed
+                if ref_allele is None:
+                    ref_allele = ref_parsed
+                if alt_allele is None:
+                    alt_allele = alt_parsed
+            except Exception as e:
+                logger.warning(f"Could not parse variant_id '{variant_id}': {str(e)}")
+        
+        # Set defaults if still None
+        if chrom is None:
+            chrom = 'NA'
+        if pos is None:
+            pos = 0
+        if ref_allele is None:
+            ref_allele = 'REF'
+        if alt_allele is None:
+            alt_allele = 'ALT'
+        
+        # Build result with LocusZoom-compatible columns
+        gwas_result = {
+            # Standard columns
+            'variant_id': variant_id,
+            'snp': variant_id,  # Alias for variant_id
+            'alpha_value': alpha_value,
+            'coef': result_df['coef'].iloc[0],
+            'std_err': result_df['std_err'].iloc[0],
+            'stat': result_df['stat'].iloc[0],
+            'pval': result_df['pval'].iloc[0],
+            'conf_int_low': result_df['conf_int_low'].iloc[0],
+            'conf_int_high': result_df['conf_int_high'].iloc[0],
+            'n_samples': result_df['n_samples'].iloc[0],
+            
+            # LocusZoom-required columns (standard names)
+            'MarkerName': variant_id,
+            'CHR': str(chrom),
+            'POS': int(pos) if pos != 0 else 0,
+            'Allele1': ref_allele,
+            'Allele2': alt_allele,
+            'Effect': result_df['coef'].iloc[0],
+            'StdErr': result_df['std_err'].iloc[0],
+            'P-value': result_df['pval'].iloc[0],
+            'MAF': maf,
+            'EAF': eaf,
+            
+            # Additional info columns
+            'chrom': chrom,
+            'pos': pos,
+            'ref_allele': ref_allele,
+            'alt_allele': alt_allele,
+            'maf': maf,
+            'eaf': eaf
+        }
+        
+        gwas_results.append(gwas_result)
+    
+    if not gwas_results:
+        logger.warning("No variants were successfully analyzed.")
+        return pd.DataFrame()
+    
+    gwas_df = pd.DataFrame(gwas_results)
+    
+    if self.verbose:
+        logger.info(f"EDGE GWAS complete. Analyzed {len(gwas_results)} variants.")
+        logger.info(f"Skipped {len(self.skipped_snps)} variants.")
+        if self.outcome_transform:
+            logger.info(f"Outcome transformation applied: {self.outcome_transform}")
+        logger.info(f"OLS optimization method used: {self.ols_method}")
+        
+        # Report MAF/EAF statistics
+        if 'maf' in gwas_df.columns:
+            valid_maf = gwas_df['maf'].dropna()
+            if len(valid_maf) > 0:
+                logger.info(f"MAF range: {valid_maf.min():.4f} - {valid_maf.max():.4f}")
+    
+    return gwas_df
+
+
+def _parse_variant_id(
+    self,
+    variant_id: str,
+    pattern: str
+) -> Tuple[str, int, str, str]:
+    """
+    Parse variant ID to extract chromosome, position, ref, and alt alleles.
+    
+    Args:
+        variant_id: Variant identifier string
+        pattern: Pattern describing the variant_id format
+        
+    Returns:
+        Tuple of (chrom, pos, ref_allele, alt_allele)
+        
+    Raises:
+        ValueError: If variant_id cannot be parsed with the given pattern
+    """
+    parts = None
+    chrom = None
+    pos = None
+    ref_allele = None
+    alt_allele = None
+    
+    if pattern == 'chr:pos':
+        # Format: 1:12345
+        parts = variant_id.split(':')
+        if len(parts) >= 2:
+            chrom = parts[0]
+            pos = int(parts[1])
+            ref_allele = None
+            alt_allele = None
+    
+    elif pattern == 'chr:pos:ref:alt':
+        # Format: 1:12345:A:T
+        parts = variant_id.split(':')
+        if len(parts) >= 4:
+            chrom = parts[0]
+            pos = int(parts[1])
+            ref_allele = parts[2]
+            alt_allele = parts[3]
+    
+    elif pattern == 'chr:pos_ref_alt':
+        # Format: 1:12345_A_T
+        if ':' in variant_id and '_' in variant_id:
+            chr_pos, alleles = variant_id.split(':', 1)
+            chrom = chr_pos
+            if '_' in alleles:
+                parts = alleles.split('_')
+                if len(parts) >= 3:
+                    pos = int(parts[0])
+                    ref_allele = parts[1]
+                    alt_allele = parts[2]
+    
+    elif pattern == 'chr_pos_ref_alt':
+        # Format: 1_12345_A_T
+        parts = variant_id.split('_')
+        if len(parts) >= 4:
+            chrom = parts[0]
+            pos = int(parts[1])
+            ref_allele = parts[2]
+            alt_allele = parts[3]
+    
+    else:
+        raise ValueError(f"Unknown variant_id pattern: {pattern}")
+    
+    if chrom is None or pos is None:
+        raise ValueError(f"Could not parse variant_id '{variant_id}' with pattern '{pattern}'")
+    
+    return chrom, pos, ref_allele, alt_allele
     
     def run_full_analysis(
         self,
