@@ -2778,6 +2778,10 @@ def validate_and_align_data(
     if verbose:
         logger.info("Validating and aligning genotype and phenotype data...")
     
+    # Store original index names
+    geno_index_name = genotype_df.index.name
+    pheno_index_name = phenotype_df.index.name
+    
     # Get sample IDs from genotype
     if geno_id_col is None:
         geno_samples = genotype_df.index
@@ -2855,18 +2859,27 @@ def validate_and_align_data(
     # Subset and align data
     if geno_id_col is None:
         geno_aligned = genotype_df.loc[common_geno].copy()
+        # Preserve original index name
+        geno_aligned.index.name = geno_index_name
     else:
         geno_aligned = genotype_df[genotype_df[geno_id_col].isin(common_geno)].copy()
         geno_aligned = geno_aligned.set_index(geno_id_col).loc[common_geno]
+        # Set index name from column name
+        geno_aligned.index.name = geno_id_col
     
     if pheno_id_col is None:
         pheno_aligned = phenotype_df.loc[common_pheno].copy()
+        # Preserve original index name
+        pheno_aligned.index.name = pheno_index_name
     else:
         pheno_aligned = phenotype_df[phenotype_df[pheno_id_col].isin(common_pheno)].copy()
         pheno_aligned = pheno_aligned.set_index(pheno_id_col).loc[common_pheno]
+        # Set index name from column name
+        pheno_aligned.index.name = pheno_id_col
     
-    # Ensure indices match (convert pheno to match geno type)
-    pheno_aligned.index = geno_aligned.index
+    # Ensure indices match (convert pheno to match geno values AND preserve geno index name)
+    pheno_aligned.index = geno_aligned.index.copy()
+    pheno_aligned.index.name = geno_aligned.index.name  # FIXED: Preserve genotype index name
     
     # Validate outcome and covariates if specified
     if outcome_col is not None or covariate_cols is not None:
@@ -2890,9 +2903,12 @@ def validate_and_align_data(
     if verbose:
         logger.info(f"✓ Data validated and aligned: {len(geno_aligned)} samples")
         logger.info(f"  Genotype shape: {geno_aligned.shape}")
+        logger.info(f"  Genotype index: '{geno_aligned.index.name}'")
         logger.info(f"  Phenotype shape: {pheno_aligned.shape}")
+        logger.info(f"  Phenotype index: '{pheno_aligned.index.name}'")
     
     return geno_aligned, pheno_aligned
+    
     
 # Backward compatibility: keep old function name
 additive_gwas = standard_gwas
