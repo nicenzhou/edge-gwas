@@ -1974,6 +1974,291 @@ def filter_related_samples(
     
     return filtered_df
 
+def impute_covariates(
+    phenotype_df: pd.DataFrame,
+    covariate_cols: List[str],
+    method: str = 'median',
+    drop_na: bool = False,
+    verbose: bool = True
+) -> pd.DataFrame:
+    """
+    Impute missing values in covariates.
+    
+    Args:
+        phenotype_df: Phenotype DataFrame with covariates
+        covariate_cols: List of covariate column names to impute
+        method: Imputation method. Options:
+                - 'drop': Remove all rows with any missing values
+                - 'mean': Replace with mean (numeric only)
+                - 'median': Replace with median (numeric only)
+                - 'mode': Replace with mode (works for categorical)
+                - 'missforest': MissForest algorithm (requires missingpy)
+                - 'knn': K-Nearest Neighbors (k=5)
+                - 'mice': Multiple Imputation by Chained Equations (requires missingpy)
+        drop_na: If True, drop rows with missing outcome after imputation (default: False)
+        verbose: Print imputation information
+        
+    Returns:
+        DataFrame with imputed covariates
+        
+    Note:
+        For 'missforest' and 'mice', install: pip install missingpy
+    """
+    result_df = phenotype_df.copy()
+    
+    # Validate covariate columns exist
+    missing_cols = [col for col in covariate_cols if col not in result_df.columns]
+    if missing_cols:
+        raise ValueError(f"Covariate columns not found: {missing_cols}")
+    
+    # Count missing values before imputation
+    if verbose:
+        n_total = len(result_df)
+        missing_before = result_df[covariate_cols].isna().sum()
+        logger.info(f"Missing values before imputation:")
+        for col in covariate_cols:
+            n_missing = missing_before[col]
+            if n_missing > 0:
+                logger.info(f"  {col}: {n_missing}/{n_total} ({n_missing/n_total*100:.1f}%)")
+    
+    if method == 'drop':
+        # Drop rows with any missing covariates
+        n_before = len(result_df)
+        result_df = result_df.dropna(subset=covariate_cols)
+        n_after = len(result_df)
+        if verbose:
+            logger.info(f"Dropped {n_before - n_after} rows with missing covariates")
+    
+    elif method in ['mean', 'median', 'mode']:
+        # Simple imputation
+        for col in covariate_cols:
+            if result_df[col].isna().any():
+                if method == 'mean':
+                    fill_value = result_df[col].mean()
+                elif method == 'median':
+                    fill_value = result_df[col].median()
+                elif method == 'mode':
+                    fill_value = result_df[col].mode()[0] if len(result_df[col].mode()) > 0 else result_df[col].median()
+                
+                result_df[col].fillna(fill_value, inplace=True)
+                if verbose:
+                    logger.info(f"Imputed {col} with {method}: {fill_value}")
+    
+    elif method == 'knn':
+        # KNN imputation
+        from sklearn.impute import KNNImputer
+        
+        imputer = KNNImputer(n_neighbors=5)
+        result_df[covariate_cols] = imputer.fit_transform(result_df[covariate_cols])
+        if verbose:
+            logger.info(f"Imputed covariates using KNN (k=5)")
+    
+    elif method == 'missforest':
+        # MissForest imputation
+        try:
+            from missingpy import MissForest
+        except ImportError:
+            raise ImportError(
+                "missingpy is required for MissForest imputation. "
+                "Install with: pip install missingpy"
+            )
+        
+        imputer = MissForest(max_iter=10, random_state=42)
+        result_df[covariate_cols] = imputer.fit_transform(result_df[covariate_cols])
+        if verbose:
+            logger.info(f"Imputed covariates using MissForest")
+    
+    elif method == 'mice':
+        # MICE imputation
+        try:
+            from missingpy import MICEImputer
+        except ImportError:
+            raise ImportError(
+                "missingpy is required for MICE imputation. "
+                "Install with: pip install missingpy"
+            )
+        
+        imputer = MICEImputer(random_state=42)
+        result_df[covariate_cols] = imputer.fit_transform(result_df[covariate_cols])
+        if verbose:
+            logger.info(f"Imputed covariates using MICE")
+    
+    else:
+        raise ValueError(
+            f"Unknown imputation method: {method}. "
+            f"Options: 'drop', 'mean', 'median', 'mode', 'knn', 'missforest', 'mice'"
+        )
+    
+    # Drop rows with missing outcome if requested
+    if drop_na:
+        n_before = len(result_df)
+        result_df = result_df.dropna()
+        n_after = len(result_df)
+        if verbose and n_before > n_after:
+            logger.info(f"Dropped {n_before - n_after} rows with any remaining missing values")
+    
+    # Count missing values after imputation
+    if verbose:
+        missing_after = result_df[covariate_cols].isna().sum()
+        n_still_missing = missing_after.sum()
+        if n_still_missing > 0:
+            logger.warning(f"Still have {n_still_missing} missing values after imputation")
+        else:
+            logger.info(f"✓ All missing values imputed successfully")
+    
+    return result_df
+
+
+def validate_and_align_data(
+    genotype_df: pd.DataFrame,
+    phenotype_df: pd.DataFrame,
+    outcome_col: Optional[str] = None,
+    covariate_cols: Optional[List[str]] = None,
+    geno_id_col: Optional[str] = None,
+    pheno_id_col: Optional[str] = None,
+    keep_only_common: bool = True,
+    verbose: bool = True
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Validate and align genotype and phenotype data by sample IDs.
+    
+    Args:
+        genotype_df: Genotype DataFrame (samples x variants)
+        phenotype_df: Phenotype DataFrame
+        outcome_col: Name of outcome column (optional, for validation)
+        covariate_cols: List of covariate columns (optional, for validation)
+        geno_id_col: Column name for sample IDs in genotype_df (None = use index)
+        pheno_id_col: Column name for sample IDs in phenotype_df (None = use index)
+        keep_only_common: If True, keep only samples present in both datasets (default: True)
+                         If False, raise error if samples don't match
+        verbose: Print validation information
+        
+    Returns:
+        Tuple of (aligned_genotype_df, aligned_phenotype_df)
+        Both DataFrames will have matching samples in the same order
+        
+    Raises:
+        ValueError: If no common samples found or if keep_only_common=False and samples don't match
+    """
+    if verbose:
+        logger.info("Validating and aligning genotype and phenotype data...")
+    
+    # Get sample IDs from genotype
+    if geno_id_col is None:
+        geno_samples = genotype_df.index
+    elif geno_id_col in genotype_df.columns:
+        geno_samples = genotype_df[geno_id_col]
+    else:
+        raise ValueError(f"Column '{geno_id_col}' not found in genotype_df")
+    
+    # Get sample IDs from phenotype
+    if pheno_id_col is None:
+        pheno_samples = phenotype_df.index
+    elif pheno_id_col in phenotype_df.columns:
+        pheno_samples = phenotype_df[pheno_id_col]
+    else:
+        raise ValueError(f"Column '{pheno_id_col}' not found in phenotype_df")
+    
+    # Convert to strings for comparison
+    geno_samples_str = pd.Index(geno_samples.astype(str))
+    pheno_samples_str = pd.Index(pheno_samples.astype(str))
+    
+    # Check for duplicates
+    if geno_samples_str.duplicated().any():
+        n_dup = geno_samples_str.duplicated().sum()
+        raise ValueError(f"Genotype data has {n_dup} duplicate sample IDs")
+    
+    if pheno_samples_str.duplicated().any():
+        n_dup = pheno_samples_str.duplicated().sum()
+        raise ValueError(f"Phenotype data has {n_dup} duplicate sample IDs")
+    
+    # Find common samples
+    common_samples_str = geno_samples_str.intersection(pheno_samples_str)
+    
+    if len(common_samples_str) == 0:
+        raise ValueError(
+            f"No common samples found!\n"
+            f"Genotype samples (first 5): {list(geno_samples[:5])}\n"
+            f"Phenotype samples (first 5): {list(pheno_samples[:5])}\n"
+            f"Check if sample IDs match between files."
+        )
+    
+    # Report sample overlap
+    n_geno = len(geno_samples)
+    n_pheno = len(pheno_samples)
+    n_common = len(common_samples_str)
+    n_geno_only = n_geno - n_common
+    n_pheno_only = n_pheno - n_common
+    
+    if verbose:
+        logger.info(f"Sample overlap:")
+        logger.info(f"  Genotype samples: {n_geno}")
+        logger.info(f"  Phenotype samples: {n_pheno}")
+        logger.info(f"  Common samples: {n_common}")
+        if n_geno_only > 0:
+            logger.info(f"  Genotype only: {n_geno_only}")
+        if n_pheno_only > 0:
+            logger.info(f"  Phenotype only: {n_pheno_only}")
+    
+    # Check if we should keep only common samples
+    if not keep_only_common and (n_geno_only > 0 or n_pheno_only > 0):
+        raise ValueError(
+            f"Samples don't match perfectly (keep_only_common=False):\n"
+            f"  {n_geno_only} samples only in genotype\n"
+            f"  {n_pheno_only} samples only in phenotype\n"
+            f"Set keep_only_common=True to keep only common samples."
+        )
+    
+    # Create mapping from string to original values
+    geno_str_to_orig = dict(zip(geno_samples_str, geno_samples))
+    pheno_str_to_orig = dict(zip(pheno_samples_str, pheno_samples))
+    
+    # Get common samples in original types
+    common_geno = pd.Index([geno_str_to_orig[s] for s in common_samples_str])
+    common_pheno = pd.Index([pheno_str_to_orig[s] for s in common_samples_str])
+    
+    # Subset and align data
+    if geno_id_col is None:
+        geno_aligned = genotype_df.loc[common_geno].copy()
+    else:
+        geno_aligned = genotype_df[genotype_df[geno_id_col].isin(common_geno)].copy()
+        geno_aligned = geno_aligned.set_index(geno_id_col).loc[common_geno]
+    
+    if pheno_id_col is None:
+        pheno_aligned = phenotype_df.loc[common_pheno].copy()
+    else:
+        pheno_aligned = phenotype_df[phenotype_df[pheno_id_col].isin(common_pheno)].copy()
+        pheno_aligned = pheno_aligned.set_index(pheno_id_col).loc[common_pheno]
+    
+    # Ensure indices match (convert pheno to match geno type)
+    pheno_aligned.index = geno_aligned.index
+    
+    # Validate outcome and covariates if specified
+    if outcome_col is not None or covariate_cols is not None:
+        required_cols = []
+        if outcome_col:
+            required_cols.append(outcome_col)
+        if covariate_cols:
+            required_cols.extend(covariate_cols)
+        
+        missing_cols = [col for col in required_cols if col not in pheno_aligned.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns in phenotype: {missing_cols}")
+        
+        # Check for missing values
+        if verbose:
+            for col in required_cols:
+                n_missing = pheno_aligned[col].isna().sum()
+                if n_missing > 0:
+                    logger.warning(f"{col}: {n_missing} samples with missing values")
+    
+    if verbose:
+        logger.info(f"✓ Data validated and aligned: {len(geno_aligned)} samples")
+        logger.info(f"  Genotype shape: {geno_aligned.shape}")
+        logger.info(f"  Phenotype shape: {pheno_aligned.shape}")
+    
+    return geno_aligned, pheno_aligned
+    
 # Backward compatibility: keep old function name
 additive_gwas = standard_gwas
 
