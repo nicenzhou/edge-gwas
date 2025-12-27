@@ -415,225 +415,225 @@ class EDGEAnalysis:
             'conf_int_upper': ci_upper
         }
     
-def _fit_codominant_model(
-    self,
-    het_data: pd.Series,
-    hom_data: pd.Series,
-    phenotype_df: pd.DataFrame,
-    outcome: str,
-    covariates: List[str],
-    grm: Optional[np.ndarray] = None,
-    grm_sample_ids: Optional[pd.Index] = None
-) -> pd.DataFrame:
-    """
-    Fit codominant model (separate effects for het and hom).
-    """
-    # Merge genotype data
-    data = pd.merge(
-        het_data.to_frame(),
-        hom_data.to_frame(),
-        left_index=True,
-        right_index=True,
-        suffixes=('_het', '_hom')
-    )
-    
-    # Merge with phenotype data
-    merged_df = pd.merge(data, phenotype_df, left_index=True, right_index=True)
-    merged_df = merged_df.dropna()
-    
-    # If GRM is provided, subset to common samples
-    if grm is not None and grm_sample_ids is not None:
-        merged_df = merged_df.loc[merged_df.index.intersection(grm_sample_ids)]
-        if len(merged_df) == 0:
-            logger.warning(f"No samples remain after GRM alignment for {het_data.name}")
-            return pd.DataFrame()
-    
-    snp_name = het_data.name
-    
-    # Prepare variables
-    X = merged_df[[f'{snp_name}_het', f'{snp_name}_hom'] + covariates]
-    y = merged_df[outcome]
-    
-    # Apply outcome transformation if specified (for continuous outcomes)
-    if self.outcome_type == 'continuous' and self.outcome_transform is not None:
-        try:
-            y = self._transform_outcome(y)
-        except Exception as e:
-            logger.warning(f"Outcome transformation failed for {snp_name}: {str(e)}")
-            self.skipped_snps.append(snp_name)
-            return pd.DataFrame()
-    
-    # Add constant
-    X = sm.add_constant(X)
-    
-    # Apply GRM if provided
-    if grm is not None and grm_sample_ids is not None:
-        # Align GRM to current samples
-        sample_indices = [list(grm_sample_ids).index(s) for s in merged_df.index]
-        aligned_grm = grm[np.ix_(sample_indices, sample_indices)]
+    def _fit_codominant_model(
+        self,
+        het_data: pd.Series,
+        hom_data: pd.Series,
+        phenotype_df: pd.DataFrame,
+        outcome: str,
+        covariates: List[str],
+        grm: Optional[np.ndarray] = None,
+        grm_sample_ids: Optional[pd.Index] = None
+    ) -> pd.DataFrame:
+        """
+        Fit codominant model (separate effects for het and hom).
+        """
+        # Merge genotype data
+        data = pd.merge(
+            het_data.to_frame(),
+            hom_data.to_frame(),
+            left_index=True,
+            right_index=True,
+            suffixes=('_het', '_hom')
+        )
         
-        if self.outcome_type == 'continuous':
-            # Transform data for linear mixed model
+        # Merge with phenotype data
+        merged_df = pd.merge(data, phenotype_df, left_index=True, right_index=True)
+        merged_df = merged_df.dropna()
+        
+        # If GRM is provided, subset to common samples
+        if grm is not None and grm_sample_ids is not None:
+            merged_df = merged_df.loc[merged_df.index.intersection(grm_sample_ids)]
+            if len(merged_df) == 0:
+                logger.warning(f"No samples remain after GRM alignment for {het_data.name}")
+                return pd.DataFrame()
+        
+        snp_name = het_data.name
+        
+        # Prepare variables
+        X = merged_df[[f'{snp_name}_het', f'{snp_name}_hom'] + covariates]
+        y = merged_df[outcome]
+        
+        # Apply outcome transformation if specified (for continuous outcomes)
+        if self.outcome_type == 'continuous' and self.outcome_transform is not None:
             try:
-                y_transformed, X_transformed = self._transform_with_grm_linear(y, X, aligned_grm)
-                
-                # Fit OLS on transformed data - NO OPTIMIZATION METHOD NEEDED
-                model = sm.OLS(y_transformed, X_transformed)
-                result = model.fit()
+                y = self._transform_outcome(y)
             except Exception as e:
-                logger.warning(f"GRM-based linear model fitting failed for {snp_name}: {str(e)}")
+                logger.warning(f"Outcome transformation failed for {snp_name}: {str(e)}")
                 self.skipped_snps.append(snp_name)
                 return pd.DataFrame()
-                
-        else:  # binary outcome
-            # Fit logistic mixed model
-            try:
-                result_dict = self._fit_logistic_mixed_model(
-                    y.values, X.values, aligned_grm
-                )
-                
-                # Create a result-like object
-                class MixedModelResult:
-                    def __init__(self, res_dict, feature_names):
-                        self.params = pd.Series(res_dict['params'], index=feature_names)
-                        self.bse = pd.Series(res_dict['bse'], index=feature_names)
-                        self.tvalues = pd.Series(res_dict['tvalues'], index=feature_names)
-                        self.pvalues = pd.Series(res_dict['pvalues'], index=feature_names)
-                        self._conf_int_lower = pd.Series(res_dict['conf_int_lower'], index=feature_names)
-                        self._conf_int_upper = pd.Series(res_dict['conf_int_upper'], index=feature_names)
+        
+        # Add constant
+        X = sm.add_constant(X)
+        
+        # Apply GRM if provided
+        if grm is not None and grm_sample_ids is not None:
+            # Align GRM to current samples
+            sample_indices = [list(grm_sample_ids).index(s) for s in merged_df.index]
+            aligned_grm = grm[np.ix_(sample_indices, sample_indices)]
+            
+            if self.outcome_type == 'continuous':
+                # Transform data for linear mixed model
+                try:
+                    y_transformed, X_transformed = self._transform_with_grm_linear(y, X, aligned_grm)
                     
-                    def conf_int(self):
-                        return pd.DataFrame({
-                            0: self._conf_int_lower,
-                            1: self._conf_int_upper
-                        })
-                
-                result = MixedModelResult(result_dict, X.columns)
-                
+                    # Fit OLS on transformed data - NO OPTIMIZATION METHOD NEEDED
+                    model = sm.OLS(y_transformed, X_transformed)
+                    result = model.fit()
+                except Exception as e:
+                    logger.warning(f"GRM-based linear model fitting failed for {snp_name}: {str(e)}")
+                    self.skipped_snps.append(snp_name)
+                    return pd.DataFrame()
+                    
+            else:  # binary outcome
+                # Fit logistic mixed model
+                try:
+                    result_dict = self._fit_logistic_mixed_model(
+                        y.values, X.values, aligned_grm
+                    )
+                    
+                    # Create a result-like object
+                    class MixedModelResult:
+                        def __init__(self, res_dict, feature_names):
+                            self.params = pd.Series(res_dict['params'], index=feature_names)
+                            self.bse = pd.Series(res_dict['bse'], index=feature_names)
+                            self.tvalues = pd.Series(res_dict['tvalues'], index=feature_names)
+                            self.pvalues = pd.Series(res_dict['pvalues'], index=feature_names)
+                            self._conf_int_lower = pd.Series(res_dict['conf_int_lower'], index=feature_names)
+                            self._conf_int_upper = pd.Series(res_dict['conf_int_upper'], index=feature_names)
+                        
+                        def conf_int(self):
+                            return pd.DataFrame({
+                                0: self._conf_int_lower,
+                                1: self._conf_int_upper
+                            })
+                    
+                    result = MixedModelResult(result_dict, X.columns)
+                    
+                except Exception as e:
+                    logger.warning(f"GRM-based logistic model fitting failed for {snp_name}: {str(e)}")
+                    self.skipped_snps.append(snp_name)
+                    return pd.DataFrame()
+        else:
+            # Fit standard model without GRM
+            try:
+                if self.outcome_type == 'binary':
+                    # Binary outcome: use logistic regression with optimization
+                    model = sm.Logit(y, X)
+                    result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
+                else:
+                    # Continuous outcome: use OLS with direct solution (NO optimization method)
+                    model = sm.OLS(y, X)
+                    result = model.fit()
             except Exception as e:
-                logger.warning(f"GRM-based logistic model fitting failed for {snp_name}: {str(e)}")
+                logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
                 self.skipped_snps.append(snp_name)
                 return pd.DataFrame()
-    else:
-        # Fit standard model without GRM
+        
+        # Extract results
         try:
-            if self.outcome_type == 'binary':
-                # Binary outcome: use logistic regression with optimization
-                model = sm.Logit(y, X)
-                result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
-            else:
-                # Continuous outcome: use OLS with direct solution (NO optimization method)
-                model = sm.OLS(y, X)
-                result = model.fit()
+            result_df = pd.DataFrame({
+                'snp': [snp_name],
+                'coef_het': [result.params[f'{snp_name}_het']],
+                'coef_hom': [result.params[f'{snp_name}_hom']],
+                'std_err_het': [result.bse[f'{snp_name}_het']],
+                'std_err_hom': [result.bse[f'{snp_name}_hom']],
+                'stat_het': [result.tvalues[f'{snp_name}_het']],
+                'stat_hom': [result.tvalues[f'{snp_name}_hom']],
+                'pval_het': [result.pvalues[f'{snp_name}_het']],
+                'pval_hom': [result.pvalues[f'{snp_name}_hom']],
+                'conf_int_low_het': [result.conf_int().loc[f'{snp_name}_het', 0]],
+                'conf_int_high_het': [result.conf_int().loc[f'{snp_name}_het', 1]],
+                'conf_int_low_hom': [result.conf_int().loc[f'{snp_name}_hom', 0]],
+                'conf_int_high_hom': [result.conf_int().loc[f'{snp_name}_hom', 1]],
+                'n_samples': [len(y)]
+            })
+            
+            return result_df
+            
         except Exception as e:
-            logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
+            logger.warning(f"Result extraction failed for {snp_name}: {str(e)}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
-    
-    # Extract results
-    try:
-        result_df = pd.DataFrame({
-            'snp': [snp_name],
-            'coef_het': [result.params[f'{snp_name}_het']],
-            'coef_hom': [result.params[f'{snp_name}_hom']],
-            'std_err_het': [result.bse[f'{snp_name}_het']],
-            'std_err_hom': [result.bse[f'{snp_name}_hom']],
-            'stat_het': [result.tvalues[f'{snp_name}_het']],
-            'stat_hom': [result.tvalues[f'{snp_name}_hom']],
-            'pval_het': [result.pvalues[f'{snp_name}_het']],
-            'pval_hom': [result.pvalues[f'{snp_name}_hom']],
-            'conf_int_low_het': [result.conf_int().loc[f'{snp_name}_het', 0]],
-            'conf_int_high_het': [result.conf_int().loc[f'{snp_name}_het', 1]],
-            'conf_int_low_hom': [result.conf_int().loc[f'{snp_name}_hom', 0]],
-            'conf_int_high_hom': [result.conf_int().loc[f'{snp_name}_hom', 1]],
-            'n_samples': [len(y)]
-        })
-        
-        return result_df
-        
-    except Exception as e:
-        logger.warning(f"Result extraction failed for {snp_name}: {str(e)}")
-        self.skipped_snps.append(snp_name)
-        return pd.DataFrame()
 
     
     def _fit_edge_model(
-    self,
-    edge_data: pd.Series,
-    phenotype_df: pd.DataFrame,
-    outcome: str,
-    covariates: List[str],
-    grm: Optional[np.ndarray] = None,
-    grm_sample_ids: Optional[pd.Index] = None
-) -> pd.DataFrame:
-    """
-    Fit EDGE-encoded model.
-    """
-    # ... [previous code remains the same until model fitting] ...
-    
-    # Apply GRM if provided
-    if grm is not None and grm_sample_ids is not None:
-        # Align GRM to current samples
-        sample_indices = [list(grm_sample_ids).index(s) for s in merged_df.index]
-        aligned_grm = grm[np.ix_(sample_indices, sample_indices)]
+        self,
+        edge_data: pd.Series,
+        phenotype_df: pd.DataFrame,
+        outcome: str,
+        covariates: List[str],
+        grm: Optional[np.ndarray] = None,
+        grm_sample_ids: Optional[pd.Index] = None
+    ) -> pd.DataFrame:
+        """
+        Fit EDGE-encoded model.
+        """
+        # ... [previous code remains the same until model fitting] ...
         
-        if self.outcome_type == 'continuous':
-            # Transform data for linear mixed model
-            try:
-                y_transformed, X_transformed = self._transform_with_grm_linear(y, X, aligned_grm)
-                
-                # Fit OLS on transformed data - NO OPTIMIZATION METHOD NEEDED
-                model = sm.OLS(y_transformed, X_transformed)
-                result = model.fit()
-            except Exception as e:
-                logger.warning(f"GRM-based linear model fitting failed for {snp_name}: {str(e)}")
-                self.skipped_snps.append(snp_name)
-                return pd.DataFrame()
-                
-        else:  # binary outcome
-            # Fit logistic mixed model
-            try:
-                result_dict = self._fit_logistic_mixed_model(
-                    y.values, X.values, aligned_grm
-                )
-                
-                # Create a result-like object
-                class MixedModelResult:
-                    def __init__(self, res_dict, feature_names):
-                        self.params = pd.Series(res_dict['params'], index=feature_names)
-                        self.bse = pd.Series(res_dict['bse'], index=feature_names)
-                        self.tvalues = pd.Series(res_dict['tvalues'], index=feature_names)
-                        self.pvalues = pd.Series(res_dict['pvalues'], index=feature_names)
-                        self._conf_int_lower = pd.Series(res_dict['conf_int_lower'], index=feature_names)
-                        self._conf_int_upper = pd.Series(res_dict['conf_int_upper'], index=feature_names)
+        # Apply GRM if provided
+        if grm is not None and grm_sample_ids is not None:
+            # Align GRM to current samples
+            sample_indices = [list(grm_sample_ids).index(s) for s in merged_df.index]
+            aligned_grm = grm[np.ix_(sample_indices, sample_indices)]
+            
+            if self.outcome_type == 'continuous':
+                # Transform data for linear mixed model
+                try:
+                    y_transformed, X_transformed = self._transform_with_grm_linear(y, X, aligned_grm)
                     
-                    def conf_int(self):
-                        return pd.DataFrame({
-                            0: self._conf_int_lower,
-                            1: self._conf_int_upper
-                        })
-                
-                result = MixedModelResult(result_dict, X.columns)
-                
+                    # Fit OLS on transformed data - NO OPTIMIZATION METHOD NEEDED
+                    model = sm.OLS(y_transformed, X_transformed)
+                    result = model.fit()
+                except Exception as e:
+                    logger.warning(f"GRM-based linear model fitting failed for {snp_name}: {str(e)}")
+                    self.skipped_snps.append(snp_name)
+                    return pd.DataFrame()
+                    
+            else:  # binary outcome
+                # Fit logistic mixed model
+                try:
+                    result_dict = self._fit_logistic_mixed_model(
+                        y.values, X.values, aligned_grm
+                    )
+                    
+                    # Create a result-like object
+                    class MixedModelResult:
+                        def __init__(self, res_dict, feature_names):
+                            self.params = pd.Series(res_dict['params'], index=feature_names)
+                            self.bse = pd.Series(res_dict['bse'], index=feature_names)
+                            self.tvalues = pd.Series(res_dict['tvalues'], index=feature_names)
+                            self.pvalues = pd.Series(res_dict['pvalues'], index=feature_names)
+                            self._conf_int_lower = pd.Series(res_dict['conf_int_lower'], index=feature_names)
+                            self._conf_int_upper = pd.Series(res_dict['conf_int_upper'], index=feature_names)
+                        
+                        def conf_int(self):
+                            return pd.DataFrame({
+                                0: self._conf_int_lower,
+                                1: self._conf_int_upper
+                            })
+                    
+                    result = MixedModelResult(result_dict, X.columns)
+                    
+                except Exception as e:
+                    logger.warning(f"GRM-based logistic model fitting failed for {snp_name}: {str(e)}")
+                    self.skipped_snps.append(snp_name)
+                    return pd.DataFrame()
+        else:
+            # Fit standard model without GRM
+            try:
+                if self.outcome_type == 'binary':
+                    # Binary outcome: use logistic regression with optimization
+                    model = sm.Logit(y, X)
+                    result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
+                else:
+                    # Continuous outcome: use OLS with direct solution (NO optimization method)
+                    model = sm.OLS(y, X)
+                    result = model.fit()
             except Exception as e:
-                logger.warning(f"GRM-based logistic model fitting failed for {snp_name}: {str(e)}")
+                logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
                 self.skipped_snps.append(snp_name)
                 return pd.DataFrame()
-    else:
-        # Fit standard model without GRM
-        try:
-            if self.outcome_type == 'binary':
-                # Binary outcome: use logistic regression with optimization
-                model = sm.Logit(y, X)
-                result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
-            else:
-                # Continuous outcome: use OLS with direct solution (NO optimization method)
-                model = sm.OLS(y, X)
-                result = model.fit()
-        except Exception as e:
-            logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
-            self.skipped_snps.append(snp_name)
-            return pd.DataFrame()
     
     def calculate_alpha(
         self,
