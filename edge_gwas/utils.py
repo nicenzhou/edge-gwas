@@ -32,68 +32,73 @@ class CaseControlBalance(TypedDict):
     ratio: float
 
 
-def validate_genotype_df(genotype_df: pd.DataFrame, name: str = "genotype_df") -> None:
+def _ensure_minor_allele_is_alt(
+    genotype_df: pd.DataFrame,
+    variant_info_df: pd.DataFrame,
+    verbose: bool = True
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Validate genotype DataFrame format.
+    Ensure minor allele is coded as ALT (2 in 0/1/2 encoding).
+    
+    For variants where major allele is ALT, flip the encoding:
+    - 0 (REF/REF) → 2 (ALT/ALT)
+    - 1 (REF/ALT) → 1 (stays same)
+    - 2 (ALT/ALT) → 0 (REF/REF)
+    
+    Also swap REF and ALT allele labels in variant_info.
     
     Args:
-        genotype_df: Genotype DataFrame to validate
-        name: Name of the DataFrame for error messages
+        genotype_df: Genotype DataFrame (samples x variants)
+        variant_info_df: Variant information DataFrame
+        verbose: Print recoding information
         
-    Raises:
-        TypeError: If not a pandas DataFrame
-        ValueError: If DataFrame is empty or has duplicate sample IDs
+    Returns:
+        Tuple of (recoded_genotype_df, updated_variant_info_df)
     """
-    if not isinstance(genotype_df, pd.DataFrame):
-        raise TypeError(f"{name} must be a pandas DataFrame")
+    genotype_df = genotype_df.copy()
+    variant_info_df = variant_info_df.copy()
     
-    if genotype_df.empty:
-        raise ValueError(f"{name} is empty")
+    flipped_variants = []
     
-    if genotype_df.index.duplicated().any():
-        n_duplicates = genotype_df.index.duplicated().sum()
-        raise ValueError(
-            f"{name} has {n_duplicates} duplicate sample IDs in index. "
-            f"Example duplicates: {genotype_df.index[genotype_df.index.duplicated()].unique()[:5].tolist()}"
-        )
-
-
-def validate_phenotype_df(
-    phenotype_df: pd.DataFrame,
-    outcome_col: str,
-    covariate_cols: Optional[List[str]] = None
-) -> None:
-    """
-    Validate phenotype DataFrame format.
-    
-    Args:
-        phenotype_df: Phenotype DataFrame to validate
-        outcome_col: Name of outcome column
-        covariate_cols: List of covariate column names (can be None or empty list)
+    for variant_id in genotype_df.columns:
+        # Calculate allele frequency for ALT allele
+        geno = genotype_df[variant_id]
+        valid_geno = geno.dropna()
         
-    Raises:
-        TypeError: If not a pandas DataFrame
-        ValueError: If DataFrame is empty, has duplicates, or missing columns
-    """
-    validate_genotype_df(phenotype_df, "phenotype_df")
+        if len(valid_geno) == 0:
+            continue
+        
+        # ALT allele frequency (currently coded as 2)
+        alt_freq = (2 * (valid_geno == 2).sum() + (valid_geno == 1).sum()) / (2 * len(valid_geno))
+        
+        # If ALT allele frequency > 0.5, it's actually the major allele
+        # We need to flip it so minor allele becomes ALT
+        if alt_freq > 0.5:
+            # Flip genotypes: 0→2, 1→1, 2→0
+            genotype_df[variant_id] = geno.map({0: 2, 1: 1, 2: 0})
+            
+            # Swap REF and ALT in variant info
+            if variant_id in variant_info_df.index:
+                ref_allele = variant_info_df.loc[variant_id, 'ref_allele']
+                alt_allele = variant_info_df.loc[variant_id, 'alt_allele']
+                
+                variant_info_df.loc[variant_id, 'ref_allele'] = alt_allele
+                variant_info_df.loc[variant_id, 'alt_allele'] = ref_allele
+            
+            flipped_variants.append(variant_id)
     
-    # Handle None or empty covariate list
-    if covariate_cols is None:
-        covariate_cols = []
+    if verbose and flipped_variants:
+        logger.info(f"Flipped {len(flipped_variants)} variants to ensure minor allele is ALT")
+        logger.info(f"Example flipped variants: {flipped_variants[:5]}")
     
-    required_cols = [outcome_col] + covariate_cols
-    missing_cols = [col for col in required_cols if col not in phenotype_df.columns]
-    if missing_cols:
-        raise ValueError(
-            f"Missing columns in phenotype_df: {missing_cols}. "
-            f"Available columns: {phenotype_df.columns.tolist()}"
-        )
+    return genotype_df, variant_info_df
 
 
 def load_plink_data(
     bed_file: str,
     bim_file: str,
     fam_file: str,
+    minor_allele_as_alt: bool = True,
     verbose: bool = True
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -103,6 +108,7 @@ def load_plink_data(
         bed_file: Path to .bed file
         bim_file: Path to .bim file
         fam_file: Path to .fam file
+        minor_allele_as_alt: If True, ensure minor allele is coded as ALT (2)
         verbose: Print loading information
         
     Returns:
@@ -126,8 +132,7 @@ def load_plink_data(
         genotypes = genotypes.compute()
     genotypes = np.asarray(genotypes)
     
-    # Create DataFrame: variants as rows, samples as columns
-    # Then transpose to get samples as rows, variants as columns
+    # Create DataFrame: samples as rows, variants as columns
     genotype_df = pd.DataFrame(
         genotypes,  
         index=pd.Index(sample_ids, name='sample_id'),
@@ -135,17 +140,46 @@ def load_plink_data(
     )
     
     # Create variant info DataFrame
+    # Note: In PLINK BIM format:
+    # - a1 is typically the minor/effect allele (should be our ALT)
+    # - a0 is typically the major/reference allele (should be our REF)
     variant_info_df = pd.DataFrame({
         'variant_id': variant_ids,
         'chrom': G.coords['chrom'].values,
         'pos': G.coords['pos'].values,
-        'ref_allele': G.a1.values,
-        'alt_allele': G.a0.values,
+        'ref_allele': G.a0.values,  # Major allele
+        'alt_allele': G.a1.values,  # Minor allele
     })
     variant_info_df.set_index('variant_id', inplace=True)
     
     if verbose:
         logger.info(f"Loaded {len(sample_ids)} samples and {len(variant_ids)} variants")
+    
+    # Ensure minor allele is coded as ALT (2)
+    if minor_allele_as_alt:
+        if verbose:
+            logger.info("Checking and recoding to ensure minor allele is ALT...")
+        genotype_df, variant_info_df = _ensure_minor_allele_is_alt(
+            genotype_df, variant_info_df, verbose
+        )
+    
+    # Add MAF to variant info
+    maf_list = []
+    for variant_id in genotype_df.columns:
+        geno = genotype_df[variant_id]
+        valid_geno = geno.dropna()
+        if len(valid_geno) > 0:
+            # ALT allele frequency (now guaranteed to be minor)
+            alt_freq = (2 * (valid_geno == 2).sum() + (valid_geno == 1).sum()) / (2 * len(valid_geno))
+            maf = min(alt_freq, 1 - alt_freq)  # Should equal alt_freq after recoding
+        else:
+            maf = np.nan
+        maf_list.append(maf)
+    
+    variant_info_df['MAF'] = maf_list
+    
+    if verbose:
+        logger.info(f"MAF range: {variant_info_df['MAF'].min():.4f} - {variant_info_df['MAF'].max():.4f}")
     
     return genotype_df, variant_info_df
 
@@ -154,6 +188,7 @@ def load_pgen_data(
     pgen_file: str,
     pvar_file: str,
     psam_file: str,
+    minor_allele_as_alt: bool = True,
     verbose: bool = True
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -163,6 +198,7 @@ def load_pgen_data(
         pgen_file: Path to .pgen file
         pvar_file: Path to .pvar file
         psam_file: Path to .psam file
+        minor_allele_as_alt: If True, ensure minor allele is coded as ALT (2)
         verbose: Print loading information
         
     Returns:
@@ -249,12 +285,38 @@ def load_pgen_data(
     if verbose:
         logger.info(f"Loaded {n_samples} samples and {n_variants} variants")
     
+    # Ensure minor allele is coded as ALT (2)
+    if minor_allele_as_alt:
+        if verbose:
+            logger.info("Checking and recoding to ensure minor allele is ALT...")
+        genotype_df, variant_info_df = _ensure_minor_allele_is_alt(
+            genotype_df, variant_info_df, verbose
+        )
+    
+    # Add MAF to variant info
+    maf_list = []
+    for variant_id in genotype_df.columns:
+        geno = genotype_df[variant_id]
+        valid_geno = geno.dropna()
+        if len(valid_geno) > 0:
+            alt_freq = (2 * (valid_geno == 2).sum() + (valid_geno == 1).sum()) / (2 * len(valid_geno))
+            maf = min(alt_freq, 1 - alt_freq)
+        else:
+            maf = np.nan
+        maf_list.append(maf)
+    
+    variant_info_df['MAF'] = maf_list
+    
+    if verbose:
+        logger.info(f"MAF range: {variant_info_df['MAF'].min():.4f} - {variant_info_df['MAF'].max():.4f}")
+    
     return genotype_df, variant_info_df
 
 
 def load_bgen_data(
     bgen_file: str,
     sample_file: Optional[str] = None,
+    minor_allele_as_alt: bool = True,
     verbose: bool = True
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -263,6 +325,7 @@ def load_bgen_data(
     Args:
         bgen_file: Path to .bgen file
         sample_file: Path to .sample file (optional, can be embedded in BGEN)
+        minor_allele_as_alt: If True, ensure minor allele is coded as ALT (2)
         verbose: Print loading information
         
     Returns:
@@ -288,7 +351,6 @@ def load_bgen_data(
     bgen = open_bgen(bgen_file, verbose=verbose)
     
     # Read genotype probabilities
-    # This returns probabilities for each genotype (0/0, 0/1, 1/1)
     probs = bgen.read()
     
     # Convert probabilities to dosages (expected allele count)
@@ -297,11 +359,9 @@ def load_bgen_data(
     
     # Get sample IDs
     if sample_file is not None:
-        # Read sample file (skip first two lines which are headers)
         sample_df = pd.read_csv(sample_file, sep=' ', skiprows=2, header=None)
-        sample_ids = sample_df[0].values  # First column is ID_1
+        sample_ids = sample_df[0].values
     else:
-        # Use sample IDs from BGEN file
         sample_ids = bgen.samples
     
     # Get variant information
@@ -313,7 +373,7 @@ def load_bgen_data(
     
     # Create genotype DataFrame (samples x variants)
     genotype_df = pd.DataFrame(
-        dosages.T,  # Transpose to get samples x variants
+        dosages.T,
         index=sample_ids,
         columns=variant_ids
     )
@@ -333,12 +393,69 @@ def load_bgen_data(
         logger.info(f"Loaded {len(sample_ids)} samples and {len(variant_ids)} variants")
         logger.info("Note: BGEN genotypes are dosages (0-2 continuous values)")
     
+    # Ensure minor allele is coded as ALT (2)
+    if minor_allele_as_alt:
+        if verbose:
+            logger.info("Checking and recoding to ensure minor allele is ALT...")
+        
+        # For dosage data, we need to flip dosages: dosage_new = 2 - dosage_old
+        flipped_variants = []
+        
+        for variant_id in genotype_df.columns:
+            geno = genotype_df[variant_id]
+            valid_geno = geno.dropna()
+            
+            if len(valid_geno) == 0:
+                continue
+            
+            # Calculate mean dosage (= 2 * ALT allele frequency)
+            mean_dosage = valid_geno.mean()
+            alt_freq = mean_dosage / 2
+            
+            # If ALT allele frequency > 0.5, flip
+            if alt_freq > 0.5:
+                # Flip dosages: new_dosage = 2 - old_dosage
+                genotype_df[variant_id] = 2 - geno
+                
+                # Swap REF and ALT in variant info
+                if variant_id in variant_info_df.index:
+                    ref_allele = variant_info_df.loc[variant_id, 'ref_allele']
+                    alt_allele = variant_info_df.loc[variant_id, 'alt_allele']
+                    
+                    variant_info_df.loc[variant_id, 'ref_allele'] = alt_allele
+                    variant_info_df.loc[variant_id, 'alt_allele'] = ref_allele
+                
+                flipped_variants.append(variant_id)
+        
+        if verbose and flipped_variants:
+            logger.info(f"Flipped {len(flipped_variants)} variants to ensure minor allele is ALT")
+            logger.info(f"Example flipped variants: {flipped_variants[:5]}")
+    
+    # Add MAF to variant info
+    maf_list = []
+    for variant_id in genotype_df.columns:
+        geno = genotype_df[variant_id]
+        valid_geno = geno.dropna()
+        if len(valid_geno) > 0:
+            # For dosage data, ALT freq = mean(dosage) / 2
+            alt_freq = valid_geno.mean() / 2
+            maf = min(alt_freq, 1 - alt_freq)
+        else:
+            maf = np.nan
+        maf_list.append(maf)
+    
+    variant_info_df['MAF'] = maf_list
+    
+    if verbose:
+        logger.info(f"MAF range: {variant_info_df['MAF'].min():.4f} - {variant_info_df['MAF'].max():.4f}")
+    
     return genotype_df, variant_info_df
 
 
 def load_vcf_data(
     vcf_file: str,
     dosage: bool = True,
+    minor_allele_as_alt: bool = True,
     verbose: bool = True
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -347,6 +464,7 @@ def load_vcf_data(
     Args:
         vcf_file: Path to .vcf or .vcf.gz file
         dosage: If True, use dosages (DS field); if False, use hard calls (GT field)
+        minor_allele_as_alt: If True, ensure minor allele is coded as ALT (2)
         verbose: Print loading information
         
     Returns:
@@ -436,7 +554,260 @@ def load_vcf_data(
         else:
             logger.info("Using hard calls (GT field)")
     
+    # Ensure minor allele is coded as ALT (2)
+    if minor_allele_as_alt:
+        if verbose:
+            logger.info("Checking and recoding to ensure minor allele is ALT...")
+        
+        if dosage:
+            # For dosage data, flip: dosage_new = 2 - dosage_old
+            flipped_variants = []
+            
+            for variant_id in genotype_df.columns:
+                geno = genotype_df[variant_id]
+                valid_geno = geno.dropna()
+                
+                if len(valid_geno) == 0:
+                    continue
+                
+                # Calculate mean dosage
+                mean_dosage = valid_geno.mean()
+                alt_freq = mean_dosage / 2
+                
+                # If ALT allele frequency > 0.5, flip
+                if alt_freq > 0.5:
+                    genotype_df[variant_id] = 2 - geno
+                    
+                    # Swap REF and ALT in variant info
+                    if variant_id in variant_info_df.index:
+                        ref_allele = variant_info_df.loc[variant_id, 'ref_allele']
+                        alt_allele = variant_info_df.loc[variant_id, 'alt_allele']
+                        
+                        variant_info_df.loc[variant_id, 'ref_allele'] = alt_allele
+                        variant_info_df.loc[variant_id, 'alt_allele'] = ref_allele
+                    
+                    flipped_variants.append(variant_id)
+            
+            if verbose and flipped_variants:
+                logger.info(f"Flipped {len(flipped_variants)} variants (dosage)")
+                logger.info(f"Example flipped variants: {flipped_variants[:5]}")
+        else:
+            # For hard calls, use the standard function
+            genotype_df, variant_info_df = _ensure_minor_allele_is_alt(
+                genotype_df, variant_info_df, verbose
+            )
+    
+    # Add MAF to variant info
+    maf_list = []
+    for variant_id in genotype_df.columns:
+        geno = genotype_df[variant_id]
+        valid_geno = geno.dropna()
+        if len(valid_geno) > 0:
+            if dosage:
+                # For dosage data
+                alt_freq = valid_geno.mean() / 2
+            else:
+                # For hard calls
+                alt_freq = (2 * (valid_geno == 2).sum() + (valid_geno == 1).sum()) / (2 * len(valid_geno))
+            maf = min(alt_freq, 1 - alt_freq)
+        else:
+            maf = np.nan
+        maf_list.append(maf)
+    
+    variant_info_df['MAF'] = maf_list
+    
+    if verbose:
+        logger.info(f"MAF range: {variant_info_df['MAF'].min():.4f} - {variant_info_df['MAF'].max():.4f}")
+    
     return genotype_df, variant_info_df
+
+
+def validate_genotype_df(
+    genotype_df: pd.DataFrame,
+    variant_info_df: Optional[pd.DataFrame] = None,
+    name: str = "genotype_df",
+    check_encoding: bool = True,
+    verbose: bool = True,
+    return_details: bool = False
+) -> Union[None, bool, Tuple[bool, pd.DataFrame]]:
+    """
+    Validate genotype DataFrame format and encoding.
+    
+    Performs:
+    1. Basic format validation (type, not empty, no duplicates)
+    2. Encoding validation (minor allele as ALT, valid values) - if variant_info provided
+    
+    Args:
+        genotype_df: Genotype DataFrame (samples x variants)
+        variant_info_df: Optional variant information DataFrame
+        name: Name for error messages
+        check_encoding: If True, validate encoding (requires variant_info_df)
+        verbose: Print validation results
+        return_details: If True, return (passed, report_df)
+        
+    Returns:
+        None (raises errors if invalid) OR
+        bool (validation passed) OR  
+        Tuple[bool, pd.DataFrame] (if return_details=True)
+        
+    Raises:
+        TypeError: If not a pandas DataFrame
+        ValueError: If empty, duplicates, or invalid format
+    """
+    # ========================================================================
+    # PART 1: Basic Format Validation
+    # ========================================================================
+    
+    if not isinstance(genotype_df, pd.DataFrame):
+        raise TypeError(f"{name} must be a pandas DataFrame, got {type(genotype_df)}")
+    
+    if genotype_df.empty:
+        raise ValueError(f"{name} is empty")
+    
+    # Check duplicate sample IDs
+    if genotype_df.index.duplicated().any():
+        n_dup = genotype_df.index.duplicated().sum()
+        examples = genotype_df.index[genotype_df.index.duplicated()].unique()[:5].tolist()
+        raise ValueError(f"{name} has {n_dup} duplicate sample IDs. Examples: {examples}")
+    
+    # Check duplicate variant IDs
+    if genotype_df.columns.duplicated().any():
+        n_dup = genotype_df.columns.duplicated().sum()
+        examples = genotype_df.columns[genotype_df.columns.duplicated()].unique()[:5].tolist()
+        raise ValueError(f"{name} has {n_dup} duplicate variant IDs. Examples: {examples}")
+    
+    n_samples = len(genotype_df)
+    n_variants = len(genotype_df.columns)
+    
+    if verbose:
+        logger.info(f"✓ {name} basic validation passed: {n_samples} samples, {n_variants} variants")
+    
+    # If no encoding check needed, return
+    if not check_encoding or variant_info_df is None:
+        return None
+    
+    # ========================================================================
+    # PART 2: Encoding Validation
+    # ========================================================================
+    
+    if verbose:
+        logger.info("Checking encoding (minor allele as ALT)...")
+    
+    # Detect data type
+    all_vals = genotype_df.values.flatten()
+    all_vals = all_vals[~np.isnan(all_vals)]
+    is_dosage = not np.all(np.isin(all_vals, [0, 1, 2]))
+    
+    validation_results = []
+    n_fail = 0
+    n_warning = 0
+    
+    for variant_id in genotype_df.columns:
+        geno = genotype_df[variant_id].dropna()
+        
+        result = {'variant_id': variant_id, 'n_valid': len(geno)}
+        
+        if len(geno) == 0:
+            result['status'] = 'WARNING'
+            result['issue'] = 'No valid genotypes'
+            n_warning += 1
+            validation_results.append(result)
+            continue
+        
+        # Calculate frequencies
+        if is_dosage:
+            alt_freq = geno.mean() / 2
+        else:
+            alt_freq = (2 * (geno == 2).sum() + (geno == 1).sum()) / (2 * len(geno))
+        
+        maf = min(alt_freq, 1 - alt_freq)
+        result['alt_freq'] = alt_freq
+        result['maf'] = maf
+        result['minor_is_alt'] = alt_freq <= 0.5
+        
+        # Validation
+        if alt_freq > 0.5:
+            result['status'] = 'FAIL'
+            result['issue'] = f'Minor allele is REF (ALT freq={alt_freq:.3f})'
+            n_fail += 1
+        else:
+            result['status'] = 'PASS'
+            result['issue'] = None
+        
+        validation_results.append(result)
+    
+    results_df = pd.DataFrame(validation_results)
+    validation_passed = n_fail == 0
+    
+    if verbose:
+        n_pass = (results_df['status'] == 'PASS').sum()
+        logger.info(f"Encoding validation: PASS={n_pass}, FAIL={n_fail}, WARNING={n_warning}")
+        logger.info(f"Overall: {'✓ PASSED' if validation_passed else '✗ FAILED'}")
+        
+        if not results_df.empty and 'maf' in results_df.columns:
+            valid_maf = results_df['maf'].dropna()
+            if len(valid_maf) > 0:
+                logger.info(f"MAF range: {valid_maf.min():.4f} - {valid_maf.max():.4f}")
+    
+    if return_details:
+        return validation_passed, results_df
+    else:
+        return validation_passed
+
+
+def validate_and_fix_encoding(
+    genotype_df: pd.DataFrame,
+    variant_info_df: pd.DataFrame,
+    verbose: bool = True
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Validate and automatically fix genotype encoding.
+    
+    Args:
+        genotype_df: Genotype DataFrame
+        variant_info_df: Variant info DataFrame
+        verbose: Print progress
+        
+    Returns:
+        Tuple of (fixed_genotype_df, fixed_variant_info_df, report_df)
+    """
+    # Validate current encoding
+    is_valid, initial_report = validate_genotype_df(
+        genotype_df, variant_info_df, 
+        check_encoding=True, verbose=verbose, return_details=True
+    )
+    
+    if is_valid:
+        if verbose:
+            logger.info("✓ No fixes needed")
+        initial_report['was_fixed'] = False
+        return genotype_df.copy(), variant_info_df.copy(), initial_report
+    
+    # Fix encoding
+    if verbose:
+        logger.info("Applying fixes...")
+    
+    geno_fixed, info_fixed = _ensure_minor_allele_is_alt(
+        genotype_df, variant_info_df, verbose=verbose
+    )
+    
+    # Re-validate
+    is_valid_after, final_report = validate_genotype_df(
+        geno_fixed, info_fixed,
+        check_encoding=True, verbose=verbose, return_details=True
+    )
+    
+    # Mark fixed variants
+    failed_vars = set(initial_report[initial_report['status'] == 'FAIL']['variant_id'])
+    final_report['was_fixed'] = final_report['variant_id'].isin(failed_vars)
+    
+    if verbose:
+        n_fixed = final_report['was_fixed'].sum()
+        logger.info(f"✓ Fixed {n_fixed} variants")
+        if is_valid_after:
+            logger.info("✓ All checks now pass!")
+    
+    return geno_fixed, info_fixed, final_report
 
 
 def prepare_phenotype_data(
@@ -492,6 +863,38 @@ def prepare_phenotype_data(
     logger.info(f"Prepared phenotype data for {n_after} samples")
     
     return pheno_df
+
+
+def validate_phenotype_df(
+    phenotype_df: pd.DataFrame,
+    outcome_col: str,
+    covariate_cols: Optional[List[str]] = None
+) -> None:
+    """
+    Validate phenotype DataFrame format.
+    
+    Args:
+        phenotype_df: Phenotype DataFrame to validate
+        outcome_col: Name of outcome column
+        covariate_cols: List of covariate column names (can be None or empty list)
+        
+    Raises:
+        TypeError: If not a pandas DataFrame
+        ValueError: If DataFrame is empty, has duplicates, or missing columns
+    """
+    validate_genotype_df(phenotype_df, "phenotype_df")
+    
+    # Handle None or empty covariate list
+    if covariate_cols is None:
+        covariate_cols = []
+    
+    required_cols = [outcome_col] + covariate_cols
+    missing_cols = [col for col in required_cols if col not in phenotype_df.columns]
+    if missing_cols:
+        raise ValueError(
+            f"Missing columns in phenotype_df: {missing_cols}. "
+            f"Available columns: {phenotype_df.columns.tolist()}"
+        )
 
 
 def stratified_train_test_split(
