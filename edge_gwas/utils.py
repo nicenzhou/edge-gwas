@@ -785,27 +785,6 @@ def filter_samples_by_call_rate(
     Filter samples by genotype call rate.
     
     Args:
-        genotype_df: Genotype DataFrame
-        phenotype_df: Phenotype DataFrame
-        min_call_rate: Minimum call rate (proportion of non-missing genotypes)
-        verbose: Print filtering information
-        
-    Returns:
-        Tuple of (filtered_genotype_df, filtered_phenotype_df)
-    """
-    n_before = genotype_df.shape[0]
-    
-    # Calculate call rate for each sample
-    sample_caldef filter_samples_by_call_rate(
-    genotype_df: pd.DataFrame,
-    phenotype_df: pd.DataFrame,
-    min_call_rate: float = 0.95,
-    verbose: bool = True
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Filter samples by genotype call rate.
-    
-    Args:
         genotype_df: Genotype DataFrame (samples as index)
         phenotype_df: Phenotype DataFrame (IID as index)
         min_call_rate: Minimum call rate (proportion of non-missing genotypes)
