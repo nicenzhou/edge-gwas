@@ -1643,12 +1643,6 @@ snpgdsClose(gds)
                 logger.info(f"Total samples: {len(pca_df)}")
         
         return pca_df
-        
-    finally:
-        # Clean up temporary directory
-        if cleanup and temp_dir is not None:
-            import shutil
-            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def calculate_grm_gcta(
