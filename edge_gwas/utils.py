@@ -2,13 +2,13 @@
 Utility functions for EDGE GWAS analysis.
 """
 
-
 import os
 import sys
 import tempfile
 import subprocess
 import logging
-from typing import Tuple, Optional, Union, List
+import shlex
+from typing import Tuple, Optional, Union, List, TypedDict
 import pandas as pd
 import numpy as np
 from pandas_plink import read_plink1_bin
@@ -16,6 +16,74 @@ from scipy import stats
 from sklearn.model_selection import train_test_split, KFold
 
 logger = logging.getLogger(__name__)
+
+# Constants
+MIN_SAMPLES_FOR_ANALYSIS = 10
+MIN_SAMPLES_FOR_HWE = 10
+MIN_EXPECTED_COUNT_HWE = 5
+LARGE_DATASET_THRESHOLD = 1e9  # 1 billion elements
+
+
+# Type hints for return values
+class CaseControlBalance(TypedDict):
+    """Return type for case/control balance check."""
+    case_count: int
+    control_count: int
+    ratio: float
+
+
+def validate_genotype_df(genotype_df: pd.DataFrame, name: str = "genotype_df") -> None:
+    """
+    Validate genotype DataFrame format.
+    
+    Args:
+        genotype_df: Genotype DataFrame to validate
+        name: Name of the DataFrame for error messages
+        
+    Raises:
+        TypeError: If not a pandas DataFrame
+        ValueError: If DataFrame is empty or has duplicate sample IDs
+    """
+    if not isinstance(genotype_df, pd.DataFrame):
+        raise TypeError(f"{name} must be a pandas DataFrame")
+    
+    if genotype_df.empty:
+        raise ValueError(f"{name} is empty")
+    
+    if genotype_df.index.duplicated().any():
+        n_duplicates = genotype_df.index.duplicated().sum()
+        raise ValueError(
+            f"{name} has {n_duplicates} duplicate sample IDs in index. "
+            f"Example duplicates: {genotype_df.index[genotype_df.index.duplicated()].unique()[:5].tolist()}"
+        )
+
+
+def validate_phenotype_df(
+    phenotype_df: pd.DataFrame,
+    outcome_col: str,
+    covariate_cols: List[str]
+) -> None:
+    """
+    Validate phenotype DataFrame format.
+    
+    Args:
+        phenotype_df: Phenotype DataFrame to validate
+        outcome_col: Name of outcome column
+        covariate_cols: List of covariate column names
+        
+    Raises:
+        TypeError: If not a pandas DataFrame
+        ValueError: If DataFrame is empty, has duplicates, or missing columns
+    """
+    validate_genotype_df(phenotype_df, "phenotype_df")
+    
+    required_cols = [outcome_col] + covariate_cols
+    missing_cols = [col for col in required_cols if col not in phenotype_df.columns]
+    if missing_cols:
+        raise ValueError(
+            f"Missing columns in phenotype_df: {missing_cols}. "
+            f"Available columns: {phenotype_df.columns.tolist()}"
+        )
 
 
 def load_plink_data(
@@ -130,7 +198,20 @@ def load_pgen_data(
     # Initialize genotype matrix
     n_samples = len(sample_ids)
     n_variants = len(variant_ids)
-    genotypes = np.zeros((n_samples, n_variants), dtype=np.float32)
+    
+    # Use memory mapping for large datasets
+    if n_samples * n_variants > LARGE_DATASET_THRESHOLD:
+        if verbose:
+            logger.info("Large dataset detected. Using memory-mapped array.")
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.dat')
+        genotypes = np.memmap(
+            temp_file.name,
+            dtype=np.float32,
+            mode='w+',
+            shape=(n_samples, n_variants)
+        )
+    else:
+        genotypes = np.zeros((n_samples, n_variants), dtype=np.float32)
     
     # Read genotypes
     variant_buffer = np.empty(n_samples, dtype=np.int32)
@@ -381,11 +462,8 @@ def prepare_phenotype_data(
     # Read phenotype file
     pheno_df = pd.read_csv(phenotype_file, sep=sep)
     
-    # Check required columns exist
-    required_cols = [sample_id_col, outcome_col] + covariate_cols
-    missing_cols = [col for col in required_cols if col not in pheno_df.columns]
-    if missing_cols:
-        raise ValueError(f"Missing columns in phenotype file: {missing_cols}")
+    # Validate required columns
+    validate_phenotype_df(pheno_df, outcome_col, covariate_cols)
     
     # Set sample ID as index
     pheno_df.set_index(sample_id_col, inplace=True)
@@ -425,7 +503,23 @@ def stratified_train_test_split(
     """
     Split data into training and test sets with stratification.
     
-    [Keep the same docstring as before]
+    Args:
+        genotype_df: Genotype DataFrame (samples x variants)
+        phenotype_df: Phenotype DataFrame
+        outcome_col: Name of outcome column for stratification
+        test_size: Proportion of samples in test set (default: 0.5)
+        random_state: Random seed for reproducibility
+        is_binary: Whether outcome is binary (enables stratification)
+        geno_id_col: Column name in genotype_df for sample IDs
+                    If None, uses genotype_df.index
+        pheno_id_col: Column name in phenotype_df for sample IDs
+                     If None, uses phenotype_df.index
+        
+    Returns:
+        Tuple of (train_geno, test_geno, train_pheno, test_pheno)
+        
+    Raises:
+        ValueError: If no common samples found or stratification fails
     """
     logger.info(f"Splitting data into train/test ({1-test_size:.0%}/{test_size:.0%})")
     
@@ -463,9 +557,23 @@ def stratified_train_test_split(
             f"Index name: '{phenotype_df.index.name}'"
         )
     
-    # FIX: Convert both to strings for consistent comparison
+    # Convert both to strings for consistent comparison
     geno_samples_str = pd.Index(geno_samples.astype(str))
     pheno_samples_str = pd.Index(pheno_samples.astype(str))
+    
+    # Check for duplicate string conversions
+    if len(geno_samples_str) != len(set(geno_samples_str)):
+        n_duplicates = len(geno_samples_str) - len(set(geno_samples_str))
+        logger.warning(
+            f"{n_duplicates} genotype sample IDs map to the same string representation. "
+            f"This may cause issues with sample matching."
+        )
+    if len(pheno_samples_str) != len(set(pheno_samples_str)):
+        n_duplicates = len(pheno_samples_str) - len(set(pheno_samples_str))
+        logger.warning(
+            f"{n_duplicates} phenotype sample IDs map to the same string representation. "
+            f"This may cause issues with sample matching."
+        )
     
     # Find common samples (using string comparison)
     common_samples_str = geno_samples_str.intersection(pheno_samples_str)
@@ -588,13 +696,14 @@ def stratified_train_test_split(
     
     return train_geno, test_geno, train_pheno, test_pheno
 
+
 def filter_variants_by_maf(
     genotype_df: pd.DataFrame,
     min_maf: float = 0.01,
     verbose: bool = True
 ) -> pd.DataFrame:
     """
-    Filter variants by minor allele frequency.
+    Filter variants by minor allele frequency (optimized vectorized version).
     
     Args:
         genotype_df: Genotype DataFrame (works with both hard calls and dosages)
@@ -606,35 +715,26 @@ def filter_variants_by_maf(
     """
     n_before = genotype_df.shape[1]
     
-    # Calculate MAF for each variant
-    mafs = []
-    for col in genotype_df.columns:
-        geno = genotype_df[col].dropna()
-        if len(geno) == 0:
-            mafs.append(0)
-            continue
-        
-        # Calculate allele frequency (works for both 0/1/2 and dosages)
-        # For dosages, this gives the average dosage
-        af = geno.mean() / 2
-        
-        # MAF is minimum of af and 1-af
-        maf = min(af, 1 - af)
-        mafs.append(maf)
+    # Vectorized MAF calculation
+    af = genotype_df.mean(axis=0) / 2  # Allele frequency
+    
+    # Handle NaN values (variants with all missing data)
+    af = af.fillna(0)
+    
+    # MAF is min(af, 1-af)
+    maf = np.minimum(af, 1 - af)
     
     # Filter variants
-    maf_series = pd.Series(mafs, index=genotype_df.columns)
-    variants_to_keep = maf_series[maf_series >= min_maf].index
+    variants_to_keep = maf[maf >= min_maf].index
+    genotype_df_filtered = genotype_df[variants_to_keep]
     
-    genotype_df = genotype_df[variants_to_keep]
-    
-    n_after = genotype_df.shape[1]
+    n_after = genotype_df_filtered.shape[1]
     
     if verbose:
         logger.info(f"Filtered variants by MAF >= {min_maf}")
         logger.info(f"Kept {n_after}/{n_before} variants ({n_after/n_before*100:.1f}%)")
     
-    return genotype_df
+    return genotype_df_filtered
 
 
 def filter_variants_by_missing(
@@ -656,19 +756,19 @@ def filter_variants_by_missing(
     n_before = genotype_df.shape[1]
     
     # Calculate missing rate for each variant
-    missing_rates = genotype_df.isna().mean()
+    missing_rates = genotype_df.isna().mean(axis=0)
     
     # Filter variants
     variants_to_keep = missing_rates[missing_rates <= max_missing].index
-    genotype_df = genotype_df[variants_to_keep]
+    genotype_df_filtered = genotype_df[variants_to_keep]
     
-    n_after = genotype_df.shape[1]
+    n_after = genotype_df_filtered.shape[1]
     
     if verbose:
         logger.info(f"Filtered variants by missing rate <= {max_missing}")
         logger.info(f"Kept {n_after}/{n_before} variants ({n_after/n_before*100:.1f}%)")
     
-    return genotype_df
+    return genotype_df_filtered
 
 
 def filter_samples_by_call_rate(
@@ -697,23 +797,23 @@ def filter_samples_by_call_rate(
     # Filter samples
     good_samples = sample_call_rate[sample_call_rate >= min_call_rate].index
     
-    genotype_df = genotype_df.loc[good_samples]
-    phenotype_df = phenotype_df.loc[phenotype_df.index.intersection(good_samples)]
+    genotype_df_filtered = genotype_df.loc[good_samples]
+    phenotype_df_filtered = phenotype_df.loc[phenotype_df.index.intersection(good_samples)]
     
-    n_after = genotype_df.shape[0]
+    n_after = genotype_df_filtered.shape[0]
     
     if verbose:
         logger.info(f"Filtered samples by call rate >= {min_call_rate}")
         logger.info(f"Kept {n_after}/{n_before} samples ({n_after/n_before*100:.1f}%)")
     
-    return genotype_df, phenotype_df
+    return genotype_df_filtered, phenotype_df_filtered
 
 
 def check_case_control_balance(
     phenotype_df: pd.DataFrame,
     outcome_col: str,
     verbose: bool = True
-) -> dict:
+) -> CaseControlBalance:
     """
     Check case/control balance in binary outcome.
     
@@ -758,18 +858,27 @@ def calculate_hwe_pvalues(
     Returns:
         Series of HWE p-values for each variant
     """
+    try:
+        from tqdm import tqdm
+        use_tqdm = True
+    except ImportError:
+        use_tqdm = False
+    
     if verbose:
         logger.info("Calculating Hardy-Weinberg Equilibrium p-values...")
     
     hwe_pvals = {}
     
-    for variant in genotype_df.columns:
+    variants = genotype_df.columns
+    iterator = tqdm(variants, desc="Calculating HWE") if (verbose and use_tqdm) else variants
+    
+    for variant in iterator:
         geno = genotype_df[variant].dropna()
         
         # Only use hard calls (0, 1, 2)
         geno = geno[geno.isin([0, 1, 2])]
         
-        if len(geno) < 10:  # Skip if too few samples
+        if len(geno) < MIN_SAMPLES_FOR_HWE:  # Skip if too few samples
             hwe_pvals[variant] = np.nan
             continue
         
@@ -789,8 +898,8 @@ def calculate_hwe_pvalues(
         exp_ab = n_total * 2 * p * q
         exp_bb = n_total * q * q
         
-        # Chi-square test
-        if exp_aa > 0 and exp_ab > 0 and exp_bb > 0:
+        # Chi-square test (only if expected counts are sufficient)
+        if exp_aa >= MIN_EXPECTED_COUNT_HWE and exp_ab >= MIN_EXPECTED_COUNT_HWE and exp_bb >= MIN_EXPECTED_COUNT_HWE:
             obs = np.array([n_aa, n_ab, n_bb])
             exp = np.array([exp_aa, exp_ab, exp_bb])
             
@@ -799,13 +908,17 @@ def calculate_hwe_pvalues(
             
             hwe_pvals[variant] = pval
         else:
+            # Too few expected counts for valid chi-square test
             hwe_pvals[variant] = np.nan
     
     hwe_series = pd.Series(hwe_pvals)
     
     if verbose:
         n_valid = hwe_series.notna().sum()
-        logger.info(f"Calculated HWE p-values for {n_valid} variants")
+        n_total = len(hwe_series)
+        logger.info(f"Calculated HWE p-values for {n_valid}/{n_total} variants")
+        if n_valid < n_total:
+            logger.info(f"  {n_total - n_valid} variants skipped (insufficient data)")
     
     return hwe_series
 
@@ -831,20 +944,24 @@ def filter_variants_by_hwe(
     # Calculate HWE p-values
     hwe_pvals = calculate_hwe_pvalues(genotype_df, verbose=False)
     
-    # Filter variants
-    variants_to_keep = hwe_pvals[hwe_pvals >= hwe_threshold].index
-    genotype_df = genotype_df[variants_to_keep]
+    # Filter variants (keep those with p-value >= threshold or NaN)
+    variants_to_keep = hwe_pvals[(hwe_pvals >= hwe_threshold) | hwe_pvals.isna()].index
+    genotype_df_filtered = genotype_df[variants_to_keep]
     
-    n_after = genotype_df.shape[1]
+    n_after = genotype_df_filtered.shape[1]
     
     if verbose:
+        n_filtered_hwe = (hwe_pvals < hwe_threshold).sum()
+        n_na = hwe_pvals.isna().sum()
         logger.info(f"Filtered variants by HWE p-value >= {hwe_threshold}")
+        logger.info(f"  Removed {n_filtered_hwe} variants failing HWE")
+        logger.info(f"  Kept {n_na} variants with insufficient data for HWE test")
         logger.info(f"Kept {n_after}/{n_before} variants ({n_after/n_before*100:.1f}%)")
     
-    return genotype_df
+    return genotype_df_filtered
 
 
-def additive_gwas(
+def standard_gwas(
     genotype_df: pd.DataFrame,
     phenotype_df: pd.DataFrame,
     outcome: str,
@@ -866,18 +983,27 @@ def additive_gwas(
     """
     from sklearn.linear_model import LogisticRegression, LinearRegression
     
-    logger.info(f"Running additive GWAS ({outcome_type} outcome)...")
+    logger.info(f"Running standard GWAS ({outcome_type} outcome)...")
     
     results = []
     
-    for variant in genotype_df.columns:
+    try:
+        from tqdm import tqdm
+        use_tqdm = True
+    except ImportError:
+        use_tqdm = False
+    
+    variants = genotype_df.columns
+    iterator = tqdm(variants, desc="Standard GWAS") if use_tqdm else variants
+    
+    for variant in iterator:
         try:
             # Prepare data
             X = phenotype_df[covariates].copy()
             X['genotype'] = genotype_df[variant]
             X = X.dropna()
             
-            if len(X) < 10:  # Skip if too few samples
+            if len(X) < MIN_SAMPLES_FOR_ANALYSIS:  # Skip if too few samples
                 continue
             
             y = phenotype_df.loc[X.index, outcome]
@@ -934,7 +1060,7 @@ def additive_gwas(
     
     results_df = pd.DataFrame(results)
     
-    logger.info(f"Completed additive GWAS for {len(results_df)} variants")
+    logger.info(f"Completed standard GWAS for {len(results_df)} variants")
     
     return results_df
 
@@ -1015,26 +1141,26 @@ def cross_validated_edge_analysis(
     avg_alpha.columns = ['variant_id', 'alpha_mean', 'alpha_std', 'eaf']
     
     # Meta-analysis of p-values across folds (Fisher's method)
-    meta_gwas = []
-    for variant in combined_gwas['variant_id'].unique():
-        variant_data = combined_gwas[combined_gwas['variant_id'] == variant]
+        meta_gwas = []
+        for variant in combined_gwas['variant_id'].unique():
+            variant_data = combined_gwas[combined_gwas['variant_id'] == variant]
+            
+            # Combine p-values using Fisher's method
+            _, combined_pval = combine_pvalues(variant_data['pval'], method='fisher')
+            
+            meta_gwas.append({
+                'variant_id': variant,
+                'pval': combined_pval,
+                'mean_coef': variant_data['coef'].mean(),
+                'std_coef': variant_data['coef'].std()
+            })
         
-        # Combine p-values using Fisher's method
-        _, combined_pval = combine_pvalues(variant_data['pval'], method='fisher')
+        meta_gwas_df = pd.DataFrame(meta_gwas)
         
-        meta_gwas.append({
-            'variant_id': variant,
-            'pval': combined_pval,
-            'mean_coef': variant_data['coef'].mean(),
-            'std_coef': variant_data['coef'].std()
-        })
-    
-    meta_gwas_df = pd.DataFrame(meta_gwas)
-    
-    logger.info("Cross-validation complete")
-    logger.info(f"Mean alpha std across variants: {avg_alpha['alpha_std'].mean():.3f}")
-    
-    return avg_alpha, meta_gwas_df, combined_alpha, combined_gwas
+        logger.info("Cross-validation complete")
+        logger.info(f"Mean alpha std across variants: {avg_alpha['alpha_std'].mean():.3f}")
+        
+        return avg_alpha, meta_gwas_df, combined_alpha, combined_gwas
 
 
 def calculate_pca_sklearn(
@@ -1063,6 +1189,9 @@ def calculate_pca_sklearn(
     
     if verbose:
         logger.info(f"Calculating {n_pcs} principal components using scikit-learn...")
+    
+    # Validate input
+    validate_genotype_df(genotype_df)
     
     # Impute missing values with mean
     imputer = SimpleImputer(strategy='mean')
@@ -1136,10 +1265,6 @@ def calculate_pca_plink(
         The approximate method computes PCs on a subset of samples and projects
         the remaining samples onto these PCs.
     """
-    import subprocess
-    import tempfile
-    import shutil
-    
     # Create temporary directory if no output prefix specified
     if output_prefix is None:
         temp_dir = tempfile.mkdtemp()
@@ -1237,6 +1362,7 @@ def calculate_pca_plink(
     finally:
         # Clean up temporary directory
         if cleanup and temp_dir is not None:
+            import shutil
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -1289,9 +1415,16 @@ def calculate_pca_pcair(
         Conomos et al. (2015) Genetic Epidemiology
         https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4608645/
     """
-    import subprocess
-    import tempfile
-    import shutil
+    # Check if R and Rscript are available
+    try:
+        result = subprocess.run(['Rscript', '--version'], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError("Rscript not found. Please install R.")
+    except FileNotFoundError:
+        raise RuntimeError(
+            "Rscript not found in PATH. Please install R and ensure it's available.\n"
+            "Download R from: https://www.r-project.org/"
+        )
     
     # Create temporary directory if no output prefix specified
     if output_prefix is None:
@@ -1318,7 +1451,18 @@ def calculate_pca_pcair(
                 verbose=verbose
             )
         
-        # Create R script for PC-AiR
+        # Create R script for PC-AiR with proper escaping
+        bed_file = shlex.quote(f"{plink_prefix}.bed")
+        bim_file = shlex.quote(f"{plink_prefix}.bim")
+        fam_file = shlex.quote(f"{plink_prefix}.fam")
+        gds_file = shlex.quote(f"{output_prefix}.gds")
+        grm_bin_file = shlex.quote(f"{kinship_matrix}.grm.bin")
+        grm_n_file = shlex.quote(f"{kinship_matrix}.grm.N.bin")
+        grm_id_file = shlex.quote(f"{kinship_matrix}.grm.id")
+        output_file = shlex.quote(f"{output_prefix}_pcair.txt")
+        variance_file = shlex.quote(f"{output_prefix}_variance.txt")
+        unrelated_file = shlex.quote(f"{output_prefix}_unrelated.txt")
+        
         r_script = f"""
 # Load required libraries
 suppressPackageStartupMessages({{
@@ -1329,22 +1473,22 @@ suppressPackageStartupMessages({{
 
 # Convert PLINK to GDS format
 snpgdsBED2GDS(
-    bed.fn = "{plink_prefix}.bed",
-    bim.fn = "{plink_prefix}.bim", 
-    fam.fn = "{plink_prefix}.fam",
-    out.gdsfn = "{output_prefix}.gds"
+    bed.fn = {bed_file},
+    bim.fn = {bim_file}, 
+    fam.fn = {fam_file},
+    out.gdsfn = {gds_file}
 )
 
 # Open GDS file
-gds <- snpgdsOpen("{output_prefix}.gds")
+gds <- snpgdsOpen({gds_file})
 
 # Load kinship matrix from GCTA format
 # Read GRM binary file
-grm_bin <- file("{kinship_matrix}.grm.bin", "rb")
-grm_n_file <- file("{kinship_matrix}.grm.N.bin", "rb")
+grm_bin <- file({grm_bin_file}, "rb")
+grm_n_file_handle <- file({grm_n_file}, "rb")
 
 # Read sample IDs
-sample_ids <- read.table("{kinship_matrix}.grm.id", header=FALSE, stringsAsFactors=FALSE)
+sample_ids <- read.table({grm_id_file}, header=FALSE, stringsAsFactors=FALSE)
 n_samples <- nrow(sample_ids)
 
 # Read number of values (lower triangle including diagonal)
@@ -1353,7 +1497,7 @@ n_values <- n_samples * (n_samples + 1) / 2
 # Read GRM values
 grm_values <- readBin(grm_bin, what="numeric", n=n_values, size=4)
 close(grm_bin)
-close(grm_n_file)
+close(grm_n_file_handle)
 
 # Reconstruct full symmetric matrix
 kin_matrix <- matrix(0, nrow=n_samples, ncol=n_samples)
@@ -1393,7 +1537,7 @@ output_df <- data.frame(
 
 write.table(
     output_df,
-    file = "{output_prefix}_pcair.txt",
+    file = {output_file},
     quote = FALSE,
     row.names = FALSE,
     sep = "\\t"
@@ -1402,7 +1546,7 @@ write.table(
 # Save variance explained
 write.table(
     data.frame(variance = pc_air$values[1:{n_pcs}]),
-    file = "{output_prefix}_variance.txt",
+    file = {variance_file},
     quote = FALSE,
     row.names = FALSE,
     sep = "\\t"
@@ -1411,7 +1555,7 @@ write.table(
 # Save unrelated set
 write.table(
     data.frame(IID = as.character(pc_air$unrels)),
-    file = "{output_prefix}_unrelated.txt",
+    file = {unrelated_file},
     quote = FALSE,
     row.names = FALSE,
     sep = "\\t"
@@ -1476,6 +1620,7 @@ snpgdsClose(gds)
     finally:
         # Clean up temporary directory
         if cleanup and temp_dir is not None:
+            import shutil
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -1510,14 +1655,18 @@ def calculate_grm_gcta(
         - prefix.grm.N.bin: Number of SNPs used for each pair
         - prefix.grm.id: Sample IDs (FID and IID)
     """
-    import subprocess
-    import tempfile
-    
     # Determine GCTA command (gcta64 or gcta)
     gcta_cmd = 'gcta64'
     test_result = subprocess.run(['which', 'gcta64'], capture_output=True)
     if test_result.returncode != 0:
         gcta_cmd = 'gcta'
+        # Test if gcta is available
+        test_result = subprocess.run(['which', 'gcta'], capture_output=True)
+        if test_result.returncode != 0:
+            raise RuntimeError(
+                "GCTA not found in PATH. Please install GCTA.\n"
+                "Download from: https://yanglab.westlake.edu.cn/software/gcta/"
+            )
     
     # Create temporary directory if no output prefix specified
     if output_prefix is None:
@@ -1776,7 +1925,7 @@ def identify_related_samples(
     Args:
         grm_matrix: n_samples x n_samples GRM matrix
         sample_ids: DataFrame with sample IDs (from load_grm_gcta)
-        threshold: Relatedness threshold (default: 0.0884 ~ 2nd degree relatives)
+        threshold: Relatedness threshold (default: 0.0884 ~ 3rd degree relatives)
                   Common thresholds:
                   - 0.354: 1st degree (parent-offspring, full siblings)
                   - 0.177: 2nd degree (half-siblings, grandparent-grandchild)
@@ -1950,3 +2099,12 @@ def filter_related_samples(
         logger.info(f"Unrelated samples remaining: {n_filtered} ({n_filtered/n_original*100:.1f}%)")
     
     return filtered_df
+
+# Backward compatibility: keep old function name
+additive_gwas = standard_gwas
+
+
+
+
+
+
