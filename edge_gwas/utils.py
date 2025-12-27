@@ -469,8 +469,6 @@ def load_vcf_data(
         
     Returns:
         Tuple of (genotype_df, variant_info_df)
-        - genotype_df: DataFrame with samples as index, variants as columns
-        - variant_info_df: DataFrame with variant information
         
     Note:
         Requires cyvcf2 package: pip install cyvcf2
@@ -570,8 +568,8 @@ def load_vcf_data(
                 if len(valid_geno) == 0:
                     continue
                 
-                # Calculate mean dosage
-                mean_dosage = valid_geno.mean()
+                # Calculate mean dosage (convert to scalar)
+                mean_dosage = float(valid_geno.mean())  # FIXED: Convert to scalar
                 alt_freq = mean_dosage / 2
                 
                 # If ALT allele frequency > 0.5, flip
@@ -604,8 +602,8 @@ def load_vcf_data(
         valid_geno = geno.dropna()
         if len(valid_geno) > 0:
             if dosage:
-                # For dosage data
-                alt_freq = valid_geno.mean() / 2
+                # For dosage data (convert to scalar)
+                alt_freq = float(valid_geno.mean()) / 2  # FIXED: Convert to scalar
             else:
                 # For hard calls
                 alt_freq = (2 * (valid_geno == 2).sum() + (valid_geno == 1).sum()) / (2 * len(valid_geno))
