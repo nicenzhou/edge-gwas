@@ -1236,46 +1236,66 @@ def calculate_pca_sklearn(
     return pca_df
 
 
-def calculate_pca_plink(
+def calculate_pca_pcair(
     plink_prefix: str,
     n_pcs: int = 10,
+    kinship_matrix: Optional[str] = None,
+    divergence_matrix: Optional[str] = None,
     output_prefix: Optional[str] = None,
-    maf_threshold: Optional[float] = 0.01,
-    ld_window: Optional[int] = 50,
-    ld_step: Optional[int] = 5,
-    ld_r2: Optional[float] = 0.2,
-    approx: bool = False,
+    kin_threshold: float = 0.0884,
+    div_threshold: float = -0.0884,
+    maf_threshold: float = 0.01,
     verbose: bool = True
 ) -> pd.DataFrame:
     """
-    Calculate principal components using PLINK2.
+    Calculate PC-AiR (Principal Components - Analysis in Related samples).
+    
+    PC-AiR is a method for computing principal components that accounts for 
+    relatedness and ancestry in genetic data. It identifies an ancestry 
+    representative subset of unrelated samples and uses this subset to 
+    compute ancestry informative PCs.
     
     Args:
         plink_prefix: Prefix for PLINK binary files (.bed/.bim/.fam)
         n_pcs: Number of principal components to calculate
+        kinship_matrix: Path to kinship matrix file (GCTA GRM format prefix)
+                       If None, will compute using calculate_grm_gcta()
+        divergence_matrix: Path to divergence matrix file (optional)
         output_prefix: Prefix for output files (default: temp directory)
-        maf_threshold: MAF threshold for variant filtering (default: 0.01, None to skip)
-        ld_window: Window size for LD pruning in variant count (default: 50, None to skip LD pruning)
-        ld_step: Step size for LD pruning in variant count (default: 5, None to skip LD pruning)
-        ld_r2: R² threshold for LD pruning (default: 0.2, None to skip LD pruning)
-        approx: Use approximate PCA for large cohorts (faster, recommended for >5000 samples)
+        kin_threshold: Kinship threshold for defining relatedness (default: 0.0884, ~ 3rd degree)
+        div_threshold: Divergence threshold (default: -0.0884)
+        maf_threshold: MAF threshold for GRM calculation (if kinship_matrix is None)
         verbose: Print progress information
         
     Returns:
-        DataFrame with 'IID' column and PC1, PC2, ..., PCn columns
-        Index is set to IID
+        DataFrame with IID as index and PC1, PC2, ..., PCn columns
         
     Note:
-        Requires PLINK2 to be installed and available in PATH.
-        Download from: https://www.cog-genomics.org/plink/2.0/
+        Requires R with GENESIS package installed:
+        ```R
+        if (!requireNamespace("BiocManager", quietly = TRUE))
+            install.packages("BiocManager")
+        BiocManager::install("GENESIS")
+        BiocManager::install("SNPRelate")
+        BiocManager::install("gdsfmt")
+        ```
         
-        For large cohorts (>5000 samples), use approx=True for faster computation.
-        Set maf_threshold, ld_window, ld_step, or ld_r2 to None to skip those filters.
+    Reference:
+        Conomos et al. (2015) Genetic Epidemiology
+        https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4608645/
     """
-    # Create temporary directory if no output prefix specified
+    # Check if R is available
+    try:
+        result = subprocess.run(['Rscript', '--version'], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError("Rscript not found. Please install R.")
+    except FileNotFoundError:
+        raise RuntimeError("Rscript not found in PATH. Please install R.")
+    
+    # Create temporary directory if needed
     if output_prefix is None:
         temp_dir = tempfile.mkdtemp()
-        output_prefix = os.path.join(temp_dir, 'pca')
+        output_prefix = os.path.join(temp_dir, 'pcair')
         cleanup = True
     else:
         temp_dir = None
@@ -1283,113 +1303,183 @@ def calculate_pca_plink(
     
     try:
         if verbose:
-            method = "approximate" if approx else "exact"
-            logger.info(f"Calculating {n_pcs} PCs using PLINK2 ({method} method)...")
-            if maf_threshold is not None:
-                logger.info(f"MAF threshold: {maf_threshold}")
-            if ld_window is not None and ld_r2 is not None:
-                logger.info(f"LD pruning: window={ld_window}, step={ld_step}, r²<{ld_r2}")
+            logger.info(f"Calculating {n_pcs} PCs using PC-AiR...")
+            logger.info(f"Kinship threshold: {kin_threshold}, Divergence threshold: {div_threshold}")
         
-        # Step 1: LD pruning (optional)
-        # Only perform LD pruning if parameters are provided
-        if ld_window is not None and ld_step is not None and ld_r2 is not None:
-            prune_prefix = f"{output_prefix}_pruned"
-            
-            # Build LD pruning command
-            cmd_prune = [
-                'plink2',
-                '--bfile', plink_prefix,
-            ]
-            
-            # Add MAF filter if specified
-            if maf_threshold is not None:
-                cmd_prune.extend(['--maf', str(maf_threshold)])
-            
-            # Add LD pruning parameters (using variant count, not kb)
-            cmd_prune.extend([
-                '--indep-pairwise', str(ld_window), str(ld_step), str(ld_r2),
-                '--out', prune_prefix
-            ])
-            
+        # Calculate kinship matrix if not provided
+        if kinship_matrix is None:
             if verbose:
-                logger.info("Step 1: LD pruning...")
-            
-            result = subprocess.run(cmd_prune, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise RuntimeError(f"PLINK2 LD pruning failed:\n{result.stderr}")
-            
-            # Use pruned variants for PCA
-            extract_file = f'{prune_prefix}.prune.in'
-        else:
-            # Skip LD pruning
-            if verbose:
-                logger.info("Skipping LD pruning (parameters not provided)")
-            extract_file = None
+                logger.info("Calculating kinship matrix using GCTA...")
+            kinship_matrix = calculate_grm_gcta(
+                plink_prefix=plink_prefix,
+                output_prefix=f"{output_prefix}_grm",
+                maf_threshold=maf_threshold,
+                verbose=verbose
+            )
         
-        # Step 2: Calculate PCA
-        cmd_pca = [
-            'plink2',
-            '--bfile', plink_prefix,
-        ]
+        # Get absolute paths
+        bed_file = os.path.abspath(f"{plink_prefix}.bed")
+        bim_file = os.path.abspath(f"{plink_prefix}.bim")
+        fam_file = os.path.abspath(f"{plink_prefix}.fam")
+        gds_file = os.path.abspath(f"{output_prefix}.gds")
+        grm_bin_file = os.path.abspath(f"{kinship_matrix}.grm.bin")
+        grm_n_file = os.path.abspath(f"{kinship_matrix}.grm.N.bin")
+        grm_id_file = os.path.abspath(f"{kinship_matrix}.grm.id")
+        output_file = os.path.abspath(f"{output_prefix}_pcair.txt")
+        variance_file = os.path.abspath(f"{output_prefix}_variance.txt")
+        unrelated_file = os.path.abspath(f"{output_prefix}_unrelated.txt")
         
-        # Add MAF filter if specified and no LD pruning was done
-        if maf_threshold is not None and extract_file is None:
-            cmd_pca.extend(['--maf', str(maf_threshold)])
+        # Create R script for PC-AiR
+        r_script = f"""
+# Load required libraries
+suppressPackageStartupMessages({{
+    library(GENESIS)
+    library(SNPRelate)
+    library(gdsfmt)
+}})
+
+# Convert PLINK to GDS format
+snpgdsBED2GDS(
+    bed.fn = "{bed_file}",
+    bim.fn = "{bim_file}", 
+    fam.fn = "{fam_file}",
+    out.gdsfn = "{gds_file}"
+)
+
+# Open GDS file
+gds <- snpgdsOpen("{gds_file}")
+
+# Load kinship matrix from GCTA format
+grm_bin <- file("{grm_bin_file}", "rb")
+grm_n_file_handle <- file("{grm_n_file}", "rb")
+
+# Read sample IDs
+sample_ids <- read.table("{grm_id_file}", header=FALSE, stringsAsFactors=FALSE)
+n_samples <- nrow(sample_ids)
+
+# Read number of values (lower triangle including diagonal)
+n_values <- n_samples * (n_samples + 1) / 2
+
+# Read GRM values
+grm_values <- readBin(grm_bin, what="numeric", n=n_values, size=4)
+close(grm_bin)
+close(grm_n_file_handle)
+
+# Reconstruct full symmetric matrix
+kin_matrix <- matrix(0, nrow=n_samples, ncol=n_samples)
+idx <- 1
+for(i in 1:n_samples) {{
+    for(j in 1:i) {{
+        kin_matrix[i,j] <- grm_values[idx]
+        kin_matrix[j,i] <- grm_values[idx]
+        idx <- idx + 1
+    }}
+}}
+
+rownames(kin_matrix) <- sample_ids$V2
+colnames(kin_matrix) <- sample_ids$V2
+
+# Run PC-AiR
+cat("Running PC-AiR analysis...\\n")
+pc_air <- pcair(
+    gds = gds,
+    kinobj = kin_matrix,
+    kin.thresh = {kin_threshold},
+    divobj = NULL,
+    div.thresh = {div_threshold},
+    num.cores = 1
+)
+
+# Extract PCs
+pcs <- pc_air$vectors[, 1:{n_pcs}, drop=FALSE]
+colnames(pcs) <- paste0("PC", 1:{n_pcs})
+
+# Save results with IID column
+output_df <- data.frame(
+    IID = as.character(rownames(pcs)),
+    pcs,
+    stringsAsFactors = FALSE
+)
+
+write.table(
+    output_df,
+    file = "{output_file}",
+    quote = FALSE,
+    row.names = FALSE,
+    sep = "\\t"
+)
+
+# Save variance explained
+write.table(
+    data.frame(variance = pc_air$values[1:{n_pcs}]),
+    file = "{variance_file}",
+    quote = FALSE,
+    row.names = FALSE,
+    sep = "\\t"
+)
+
+# Save unrelated set
+write.table(
+    data.frame(IID = as.character(pc_air$unrels)),
+    file = "{unrelated_file}",
+    quote = FALSE,
+    row.names = FALSE,
+    sep = "\\t"
+)
+
+cat("PC-AiR complete.\\n")
+cat(paste("Unrelated samples:", length(pc_air$unrels), "\\n"))
+cat(paste("Related samples:", length(pc_air$rels), "\\n"))
+
+# Close GDS
+snpgdsClose(gds)
+"""
         
-        # Add extract file if LD pruning was performed
-        if extract_file is not None:
-            cmd_pca.extend(['--extract', extract_file])
+        # Write R script to file
+        r_script_file = f"{output_prefix}_pcair.R"
+        with open(r_script_file, 'w') as f:
+            f.write(r_script)
         
-        # Add PCA command
-        if approx:
-            # Use approximate PCA (PLINK2 will use default approximation)
-            cmd_pca.extend([
-                '--pca', 'approx', str(n_pcs),
-                '--out', output_prefix
-            ])
-        else:
-            # Use exact PCA
-            cmd_pca.extend([
-                '--pca', str(n_pcs),
-                '--out', output_prefix
-            ])
-        
+        # Run R script
         if verbose:
-            logger.info("Step 2: Calculating PCA...")
+            logger.info("Running PC-AiR in R (this may take a while)...")
         
-        result = subprocess.run(cmd_pca, capture_output=True, text=True)
+        result = subprocess.run(
+            ['Rscript', r_script_file],
+            capture_output=True,
+            text=True
+        )
+        
         if result.returncode != 0:
-            raise RuntimeError(f"PLINK2 PCA calculation failed:\n{result.stderr}")
+            raise RuntimeError(f"PC-AiR calculation failed:\n{result.stderr}\n{result.stdout}")
         
-        # Read eigenvec file
-        eigenvec_file = f"{output_prefix}.eigenvec"
-        pca_df = pd.read_csv(eigenvec_file, sep='\s+', header=None)
+        # Read results
+        pca_file = f"{output_prefix}_pcair.txt"
+        if not os.path.exists(pca_file):
+            raise RuntimeError(f"PC-AiR output file not found: {pca_file}")
         
-        # Set column names
-        # PLINK2 format: #FID IID PC1 PC2 ... PCn
-        pc_cols = [f'PC{i+1}' for i in range(n_pcs)]
-        pca_df.columns = ['FID', 'IID'] + pc_cols
+        pca_df = pd.read_csv(pca_file, sep='\t')
         
-        # Keep only IID and PC columns
-        pca_df = pca_df[['IID'] + pc_cols]
-        
-        # Convert IID to string
+        # Convert IID to string and set as index
         pca_df['IID'] = pca_df['IID'].astype(str)
-        
-        # Set IID as index
         pca_df.set_index('IID', inplace=True)
         
-        # Read eigenval file for variance explained
+        # Read variance explained
         if verbose:
-            eigenval_file = f"{output_prefix}.eigenval"
-            if os.path.exists(eigenval_file):
-                eigenvals = pd.read_csv(eigenval_file, header=None).values.flatten()
-                total_var = eigenvals.sum()
-                var_explained = eigenvals / total_var
-                logger.info(f"Variance explained by first 5 PCs: {var_explained[:5]}")
+            variance_file_path = f"{output_prefix}_variance.txt"
+            if os.path.exists(variance_file_path):
+                variance = pd.read_csv(variance_file_path, sep='\t')
+                total_var = variance['variance'].sum()
+                var_explained = variance['variance'] / total_var
+                logger.info(f"Variance explained by first 5 PCs: {var_explained[:5].values}")
                 logger.info(f"Total variance explained by {n_pcs} PCs: {var_explained.sum():.3f}")
             
-            logger.info(f"PCA calculation complete. Found {len(pca_df)} samples.")
+            # Read unrelated samples info
+            unrelated_file_path = f"{output_prefix}_unrelated.txt"
+            if os.path.exists(unrelated_file_path):
+                unrelated_df = pd.read_csv(unrelated_file_path, sep='\t')
+                logger.info(f"Number of unrelated samples: {len(unrelated_df)}")
+                logger.info(f"Total samples: {len(pca_df)}")
         
         return pca_df
         
