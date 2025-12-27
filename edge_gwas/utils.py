@@ -1141,26 +1141,26 @@ def cross_validated_edge_analysis(
     avg_alpha.columns = ['variant_id', 'alpha_mean', 'alpha_std', 'eaf']
     
     # Meta-analysis of p-values across folds (Fisher's method)
-        meta_gwas = []
-        for variant in combined_gwas['variant_id'].unique():
-            variant_data = combined_gwas[combined_gwas['variant_id'] == variant]
-            
-            # Combine p-values using Fisher's method
-            _, combined_pval = combine_pvalues(variant_data['pval'], method='fisher')
-            
-            meta_gwas.append({
-                'variant_id': variant,
-                'pval': combined_pval,
-                'mean_coef': variant_data['coef'].mean(),
-                'std_coef': variant_data['coef'].std()
-            })
+    meta_gwas = []
+    for variant in combined_gwas['variant_id'].unique():
+        variant_data = combined_gwas[combined_gwas['variant_id'] == variant]
         
-        meta_gwas_df = pd.DataFrame(meta_gwas)
+        # Combine p-values using Fisher's method
+        _, combined_pval = combine_pvalues(variant_data['pval'], method='fisher')
         
-        logger.info("Cross-validation complete")
-        logger.info(f"Mean alpha std across variants: {avg_alpha['alpha_std'].mean():.3f}")
-        
-        return avg_alpha, meta_gwas_df, combined_alpha, combined_gwas
+        meta_gwas.append({
+            'variant_id': variant,
+            'pval': combined_pval,
+            'mean_coef': variant_data['coef'].mean(),
+            'std_coef': variant_data['coef'].std()
+        })
+    
+    meta_gwas_df = pd.DataFrame(meta_gwas)
+    
+    logger.info("Cross-validation complete")
+    logger.info(f"Mean alpha std across variants: {avg_alpha['alpha_std'].mean():.3f}")
+    
+    return avg_alpha, meta_gwas_df, combined_alpha, combined_gwas
 
 
 def calculate_pca_sklearn(
