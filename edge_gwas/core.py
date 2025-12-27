@@ -753,8 +753,8 @@ class EDGEAnalysis:
             geno = genotype_data[variant_id]
             
             # Create het and hom indicators
-            het = geno.replace(2, 0)  # 0->0, 1->1, 2->0
-            hom = geno.replace({0: 1, 1: 0, 2: 0})  # 0->1, 1->0, 2->0
+            het = (geno == 1).astype(int)  # 1 if heterozygous, 0 otherwise
+            hom = (geno == 2).astype(int)  # 1 if homozygous variant, 0 otherwise
             
             het.name = variant_id
             hom.name = variant_id
@@ -902,8 +902,8 @@ class EDGEAnalysis:
             # Get genotype column
             geno = genotype_data[variant_id].copy()
             
-            # Apply EDGE encoding: 0->1, 1->alpha, 2->0
-            edge_encoded = geno.replace({0: 1.0, 1: alpha_value, 2: 0.0})
+            # Apply EDGE encoding: 0->0, 1->alpha, 2->1
+            edge_encoded = geno.replace({0: 0.0, 1: alpha_value, 2: 1.0})
             edge_encoded.name = variant_id
             
             # Fit EDGE model with optional GRM
