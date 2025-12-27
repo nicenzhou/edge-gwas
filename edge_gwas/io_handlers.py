@@ -239,7 +239,7 @@ def download_test_files(
     
     # Base URL for raw files
     base_url = f"https://raw.githubusercontent.com/nicenzhou/edge-gwas/{version}/tests/"
-    files = ['test.bed', 'test.bim', 'test.fam', 'test.phen'， ‘test.vcf']
+    files = ['test.bed', 'test.bim', 'test.fam', 'test.phen', ‘test.vcf']
     
     results = {
         'downloaded': [],
