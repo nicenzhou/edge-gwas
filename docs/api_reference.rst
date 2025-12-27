@@ -9,28 +9,28 @@ Core Module
 -----------
 
 EDGEAnalysis Class
-~~~~~~~~~~~~~~~~~~
+------------------
+
+Main class for EDGE GWAS analysis.
 
 .. code-block:: python
 
    from edge_gwas import EDGEAnalysis
    
+   # Binary outcome
+   edge = EDGEAnalysis(outcome_type='binary')
+   
+   # Continuous outcome with transformation
    edge = EDGEAnalysis(
-       outcome_type='binary',           # 'binary' or 'continuous'
-       outcome_transform=None,          # Transformation for continuous outcomes
-       ols_method='bfgs',              # NEW in v0.1.1: Optimization method for OLS
-       n_jobs=-1,                       # Number of parallel jobs
-       max_iter=1000,                   # Max iterations for convergence
-       verbose=True                     # Print progress
+       outcome_type='continuous',
+       outcome_transform='rank_inverse_normal'
    )
 
 **Parameters:**
 
-* ``outcome_type`` (str): Type of outcome variable
-
-  * ``'binary'``: For case-control studies (logistic regression)
-  * ``'continuous'``: For quantitative traits (linear regression)
-
+* ``outcome_type``: 'binary' or 'continuous'
+* ``outcome_transform``: 'log', 'log10', 'inverse_normal', 'rank_inverse_normal'
+* ``n_jobs``: Number of parallel jobs (-1 = all cores)
 * ``outcome_transform`` (str, optional): **NEW in v0.1.1** - Transformation for continuous outcomes
 
   * ``None``: No transformation (default)
@@ -823,168 +823,86 @@ Data Loading Functions
 ~~~~~~~~~~~~~~~~~~~~~~
 
 load_plink_data()
-"""""""""""""""""
+-----------------
 
-Load genotype data from PLINK binary files.
+Load PLINK binary format data (.bed/.bim/.fam).
 
 .. code-block:: python
 
    from edge_gwas.utils import load_plink_data
    
-   genotype_df, variant_info = load_plink_data(
-       bed_file='data.bed',
-       bim_file='data.bim',
-       fam_file='data.fam',
-       verbose=True
-   )
+   geno, info = load_plink_data('data.bed', 'data.bim', 'data.fam')
 
 **Parameters:**
 
 * ``bed_file`` (str): Path to .bed file
 * ``bim_file`` (str): Path to .bim file
 * ``fam_file`` (str): Path to .fam file
+* ``minor_allele_as_alt`` (bool): Ensure minor allele is ALT (default: True)
 * ``verbose`` (bool): Print loading information
 
-**Returns:**
-
-* ``tuple``: (genotype_df, variant_info)
-
-  * ``genotype_df``: Genotype matrix (samples × variants)
-  * ``variant_info``: Variant information (chr, pos, ref, alt)
+**Returns:** tuple of (genotype_df, variant_info_df)
 
 load_pgen_data()
-""""""""""""""""
+----------------
 
-**NEW in v0.1.1** - Load PLINK 2 binary format data (.pgen/.pvar/.psam).
-
-.. code-block:: python
-
-   from edge_gwas.utils import load_pgen_data
-   
-   genotype_df, variant_info = load_pgen_data(
-       pgen_file='data.pgen',
-       pvar_file='data.pvar',
-       psam_file='data.psam',
-       verbose=True
-   )
-
-**Parameters:**
-
-* ``pgen_file`` (str): Path to .pgen file
-* ``pvar_file`` (str): Path to .pvar file  
-* ``psam_file`` (str): Path to .psam file
-* ``verbose`` (bool): Print loading information
-
-**Returns:**
-
-* ``tuple``: (genotype_df, variant_info)
-
-**Note:**
-
-Requires ``pgenlib`` package: 
-
-.. code-block:: bash
-
-   pip install pgenlib
-
-load_bgen_data()
-""""""""""""""""
-
-**NEW in v0.1.1** - Load BGEN format data with dosages.
+Load PLINK 2 binary format data (.pgen/.pvar/.psam).
 
 .. code-block:: python
 
-   from edge_gwas.utils import load_bgen_data
-   
-   genotype_df, variant_info = load_bgen_data(
-       bgen_file='data.bgen',
-       sample_file='data.sample',  # Optional
-       verbose=True
-   )
+   geno, info = load_pgen_data('data.pgen', 'data.pvar', 'data.psam')
 
-**Parameters:**
-
-* ``bgen_file`` (str): Path to .bgen file
-* ``sample_file`` (str, optional): Path to .sample file (optional if embedded in BGEN)
-* ``verbose`` (bool): Print loading information
-
-**Returns:**
-
-* ``tuple``: (genotype_df, variant_info)
-  
-  * Genotypes are dosages (0-2 continuous values)
-
-**Note:**
-
-Requires ``bgen-reader`` package: 
-
-.. code-block:: bash
-
-   pip install bgen-reader
+**Requires:** ``pip install pgenlib``
 
 load_vcf_data()
-"""""""""""""""
+---------------
 
-**NEW in v0.1.1** - Load VCF/VCF.GZ format data.
+Load VCF format data (.vcf or .vcf.gz).
 
 .. code-block:: python
 
-   from edge_gwas.utils import load_vcf_data
-   
-   genotype_df, variant_info = load_vcf_data(
-       vcf_file='data.vcf.gz',
-       dosage=True,    # Use DS field if available
-       verbose=True
-   )
+   geno, info = load_vcf_data('data.vcf.gz', dosage=True)
 
 **Parameters:**
 
-* ``vcf_file`` (str): Path to .vcf or .vcf.gz file
-* ``dosage`` (bool): If True, use dosages (DS field); if False, use hard calls (GT field)
-* ``verbose`` (bool): Print loading information
+* ``dosage`` (bool): Use dosages (DS field) vs hard calls (GT field)
+* ``minor_allele_as_alt`` (bool): Ensure minor allele is ALT
 
-**Returns:**
+**Requires:** ``pip install cyvcf2``
 
-* ``tuple``: (genotype_df, variant_info)
+load_bgen_data()
+----------------
 
-**Note:**
+Load BGEN format data.
 
-Requires ``cyvcf2`` package: 
+.. code-block:: python
 
-.. code-block:: bash
+   geno, info = load_bgen_data('data.bgen', sample_file='data.sample')
 
-   pip install cyvcf2
+**Requires:** ``pip install bgen-reader``
 
 prepare_phenotype_data()
-""""""""""""""""""""""""
+-------------------------
 
 Load and prepare phenotype data.
 
 .. code-block:: python
 
-   from edge_gwas.utils import prepare_phenotype_data
-   
-   phenotype_df = prepare_phenotype_data(
-       phenotype_file='pheno.txt',
+   pheno = prepare_phenotype_data(
+       'pheno.txt',
        outcome_col='disease',
-       covariate_cols=['age', 'sex', 'PC1', 'PC2'],
+       covariate_cols=['age', 'sex', 'pc1', 'pc2'],
        sample_id_col='IID',
-       sep='\t',
-       log_transform_outcome=False
+       sep='\t'
    )
 
 **Parameters:**
 
-* ``phenotype_file`` (str): Path to phenotype file
-* ``outcome_col`` (str): Name of outcome column
-* ``covariate_cols`` (list): List of covariate columns
-* ``sample_id_col`` (str): Sample ID column name
-* ``sep`` (str): File delimiter
-* ``log_transform_outcome`` (bool): Apply log transformation to outcome (deprecated, use ``outcome_transform`` in ``EDGEAnalysis`` instead)
+* ``outcome_col``: Name of outcome column
+* ``covariate_cols``: List of covariate columns
+* ``sample_id_col``: Sample ID column (becomes index)
+* ``sep``: File separator
 
-**Returns:**
-
-* ``pandas.DataFrame``: Formatted phenotype data
 
 Data Processing Functions
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1068,6 +986,40 @@ For simplest usage, ensure both DataFrames have matching sample IDs as their ind
    train_g, test_g, train_p, test_p = stratified_train_test_split(
        geno, pheno, 'disease'
    )
+
+filter_genotype_data()
+----------------------
+
+Comprehensive genotype QC filtering (all filters optional).
+
+.. code-block:: python
+
+   # MAF filter only
+   geno_qc = filter_genotype_data(geno, min_maf=0.01)
+   
+   # MAF + missing rate
+   geno_qc = filter_genotype_data(
+       geno, 
+       min_maf=0.01, 
+       max_missing_per_variant=0.1
+   )
+   
+   # All filters (returns genotype + phenotype)
+   geno_qc, pheno_qc = filter_genotype_data(
+       geno, pheno,
+       min_maf=0.01,
+       max_missing_per_variant=0.05,
+       min_call_rate_per_sample=0.95
+   )
+
+**Parameters:**
+
+* ``min_maf``: Minimum MAF (e.g., 0.01 = 1%)
+* ``max_missing_per_variant``: Max missing rate per variant (e.g., 0.1 = 10%)
+* ``min_call_rate_per_sample``: Min call rate per sample (e.g., 0.95 = 95%)
+
+**Filter order:** MAF → Variant missing → Sample call rate
+
 
 filter_variants_by_maf()
 """"""""""""""""""""""""
@@ -1362,80 +1314,65 @@ For 'missforest' and 'mice', install missingpy:
    )
 
 validate_and_align_data()
-""""""""""""""""""""""""""
+--------------------------
 
 Validate and align genotype and phenotype data by sample IDs.
 
 .. code-block:: python
 
-   from edge_gwas.utils import validate_and_align_data
-   
    geno_aligned, pheno_aligned = validate_and_align_data(
-       genotype_df,
-       phenotype_df,
+       geno, pheno,
        outcome_col='disease',
-       covariate_cols=['age', 'sex', 'PC1', 'PC2'],
-       geno_id_col=None,
-       pheno_id_col=None,
-       keep_only_common=True,
-       verbose=True
+       covariate_cols=['age', 'sex']
    )
 
 **Parameters:**
 
-* ``genotype_df`` (pandas.DataFrame): Genotype DataFrame (samples × variants)
-* ``phenotype_df`` (pandas.DataFrame): Phenotype DataFrame
-* ``outcome_col`` (str, optional): Name of outcome column (for validation)
-* ``covariate_cols`` (list, optional): List of covariate columns (for validation)
-* ``geno_id_col`` (str, optional): Column name for sample IDs in genotype_df (None = use index)
-* ``pheno_id_col`` (str, optional): Column name for sample IDs in phenotype_df (None = use index)
-* ``keep_only_common`` (bool): If True, keep only samples present in both datasets; if False, raise error if samples don't match (default: True)
-* ``verbose`` (bool): Print validation information (default: True)
+* ``keep_only_common`` (bool): Keep only overlapping samples (default: True)
+* ``outcome_col``: Outcome column to validate
+* ``covariate_cols``: Covariate columns to validate
 
-**Returns:**
 
-* ``tuple``: (aligned_genotype_df, aligned_phenotype_df)
-  
-  * Both DataFrames have matching samples in the same order
-  * Sample IDs are set as index
-  * Only common samples included (if keep_only_common=True)
+validate_genotype_df()
+----------------------
 
-**Note:**
-
-Validation checks include:
-
-* Duplicate sample IDs
-* Common samples between datasets
-* Required columns exist
-* Missing values in required columns
-* Type mismatches between sample IDs (automatically handled)
-
-**Example:**
+Validate genotype DataFrame format and encoding.
 
 .. code-block:: python
 
-   # Basic usage - keep only common samples
-   geno, pheno = validate_and_align_data(
-       genotype_df=geno,
-       phenotype_df=pheno,
-       keep_only_common=True
-   )
+   # Basic validation
+   validate_genotype_df(geno)
    
-   # Validate with outcome and covariates
-   geno, pheno = validate_and_align_data(
-       genotype_df=geno,
-       phenotype_df=pheno,
-       outcome_col='disease',
-       covariate_cols=['age', 'sex', 'PC1', 'PC2'],
-       verbose=True
-   )
+   # With encoding check
+   is_valid = validate_genotype_df(geno, variant_info, check_encoding=True)
    
-   # Require perfect match (error if any mismatch)
-   geno, pheno = validate_and_align_data(
-       genotype_df=geno,
-       phenotype_df=pheno,
-       keep_only_common=False
+   # Detailed report
+   is_valid, report = validate_genotype_df(
+       geno, variant_info, 
+       check_encoding=True, 
+       return_details=True
    )
+
+**Parameters:**
+
+* ``genotype_df``: Genotype DataFrame (samples × variants)
+* ``variant_info_df``: Optional variant info for encoding validation
+* ``check_encoding`` (bool): Validate minor allele as ALT
+* ``return_details`` (bool): Return detailed report
+
+validate_and_fix_encoding()
+----------------------------
+
+Validate and automatically fix genotype encoding.
+
+.. code-block:: python
+
+   geno_fixed, info_fixed, report = validate_and_fix_encoding(geno, variant_info)
+   
+   # Check what was fixed
+   print(report[report['was_fixed'] == True])
+
+**Returns:** (fixed_genotype_df, fixed_variant_info_df, report_df)
 
 Statistical Functions
 ~~~~~~~~~~~~~~~~~~~~~
@@ -2225,169 +2162,117 @@ Core Module (edge_gwas.core)
 Utilities Module (edge_gwas.utils)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Population Structure Control (NEW in v0.1.1):**
+**Data Loading:**
 
 .. list-table::
    :header-rows: 1
-   :widths: 25 35 40
+   :widths: 25 40 35
 
    * - Function
      - Purpose
-     - Output
-   * - ``calculate_grm_gcta()``
-     - Calculate GRM using GCTA
-     - GRM file prefix
-   * - ``load_grm_gcta()``
-     - Load GRM from GCTA files
-     - (grm_matrix, sample_ids)
-   * - ``identify_related_samples()``
-     - Find related sample pairs
-     - DataFrame with related pairs
-   * - ``filter_related_samples()``
-     - Remove related samples
-     - Filtered phenotype DataFrame
-
-**Principal Component Analysis (NEW in v0.1.1):**
-
-.. list-table::
-   :header-rows: 1
-   :widths: 25 35 20 20
-
-   * - Function
-     - Purpose
-     - Output
-     - Requirements
-   * - ``calculate_pca_plink()``
-     - PCA using PLINK2
-     - PCA DataFrame
-     - PLINK2
-   * - ``calculate_pca_pcair()``
-     - PC-AiR for related samples
-     - PCA DataFrame
-     - R + GENESIS
-   * - ``calculate_pca_sklearn()``
-     - Basic PCA
-     - PCA DataFrame
-     - scikit-learn
-   * - ``attach_pcs_to_phenotype()``
-     - Merge PCs with phenotype
-     - Phenotype DataFrame with PCs
-     - \-
-   * - ``get_pc_covariate_list()``
-     - Generate PC covariate names
-     - List of PC names
-     - \-
-
-**Data Loading Functions:**
-
-.. list-table::
-   :header-rows: 1
-   :widths: 20 25 20 20 15
-
-   * - Function
-     - Purpose
-     - Key Input
-     - Output
      - Requirements
    * - ``load_plink_data()``
-     - Load PLINK binary files
-     - .bed, .bim, .fam paths
-     - (genotype_df, variant_info_df)
+     - Load PLINK binary files (.bed/.bim/.fam)
      - pandas-plink
    * - ``load_pgen_data()``
-     - Load PLINK 2 binary files
-     - .pgen, .pvar, .psam paths
-     - (genotype_df, variant_info_df)
+     - Load PLINK 2 files (.pgen/.pvar/.psam)
      - pgenlib
-   * - ``load_bgen_data()``
-     - Load BGEN files
-     - .bgen, .sample paths
-     - (genotype_df, variant_info_df)
-     - bgen-reader
    * - ``load_vcf_data()``
      - Load VCF/VCF.GZ files
-     - .vcf/.vcf.gz path
-     - (genotype_df, variant_info_df)
      - cyvcf2
+   * - ``load_bgen_data()``
+     - Load BGEN files
+     - bgen-reader
    * - ``prepare_phenotype_data()``
      - Load and prepare phenotype data
-     - File path, column names
-     - Phenotype DataFrame
      - \-
 
-**Data Processing Functions:**
+**Data Quality Control:**
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 35 35
+   :widths: 30 50 20
 
    * - Function
      - Purpose
      - Output
+   * - ``filter_genotype_data()``
+     - Comprehensive QC (MAF, missing, call rate)
+     - Filtered data
+   * - ``apply_standard_qc()``
+     - Apply standard GWAS filters (MAF≥0.01, missing≤0.05, call rate≥0.95)
+     - Filtered data
+   * - ``validate_genotype_df()``
+     - Validate format and encoding
+     - bool or report
+   * - ``validate_and_fix_encoding()``
+     - Auto-fix minor allele encoding
+     - Fixed data + report
+   * - ``validate_and_align_data()``
+     - Align genotype and phenotype by sample IDs
+     - Aligned data
+   * - ``diagnose_genotype_data()``
+     - Print diagnostic information
+     - Console output
+
+**Population Structure Control:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 50 20
+
+   * - Function
+     - Purpose
+     - Requirements
+   * - ``calculate_grm_gcta()``
+     - Calculate GRM using GCTA
+     - GCTA
+   * - ``load_grm_gcta()``
+     - Load GRM from GCTA files
+     - \-
+   * - ``calculate_pca_plink()``
+     - Calculate PCs using PLINK2
+     - PLINK2
+   * - ``attach_pcs_to_phenotype()``
+     - Merge PCs with phenotype
+     - \-
+   * - ``identify_related_samples()``
+     - Find related sample pairs
+     - \-
+   * - ``filter_related_samples()``
+     - Remove related samples
+     - \-
+
+**Data Processing:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Function
+     - Purpose
    * - ``stratified_train_test_split()``
-     - Split data into train/test sets
-     - (train_g, test_g, train_p, test_p)
-   * - ``filter_variants_by_maf()``
-     - Filter by minor allele frequency
-     - Filtered DataFrame
-   * - ``filter_variants_by_missing()``
-     - Filter by missingness rate
-     - Filtered DataFrame
-   * - ``filter_variants_by_hwe()``
-     - Filter by HWE p-value
-     - Filtered DataFrame
-   * - ``filter_samples_by_call_rate()``
-     - Filter samples by call rate
-     - (filtered_geno, filtered_pheno)
-   * - ``merge_alpha_with_gwas()``
-     - Merge GWAS and alpha results
-     - Merged DataFrame
+     - Split data into train/test sets with stratification
    * - ``impute_covariates()``
      - Impute missing covariate values
-     - Imputed DataFrame
-   * - ``validate_and_align_data()``
-     - Validate and align genotype/phenotype
-     - (aligned_geno, aligned_pheno)
 
 **Statistical Functions:**
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 40 30
+   :widths: 35 65
 
    * - Function
      - Purpose
-     - Output
    * - ``calculate_genomic_inflation()``
-     - Calculate lambda (λ)
-     - Lambda (float)
-   * - ``calculate_hwe_pvalues()``
-     - Calculate HWE p-values
-     - HWE p-values Series
-   * - ``check_case_control_balance()``
-     - Check case/control balance
-     - Dictionary with counts and ratio
-
-**Analysis Functions (NEW in v0.1.1):**
-
-.. list-table::
-   :header-rows: 1
-   :widths: 35 35 30
-
-   * - Function
-     - Purpose
-     - Output
+     - Calculate genomic inflation factor (λ)
    * - ``additive_gwas()``
      - Standard additive GWAS for comparison
-     - GWAS results DataFrame
    * - ``cross_validated_edge_analysis()``
      - K-fold cross-validation for EDGE
-     - (avg_alpha, meta_gwas, all_alpha, all_gwas)
 
 Complete Workflow Example
 --------------------------
-
-Here's a complete example using new v0.1.1 features:
 
 .. code-block:: python
 
@@ -2395,215 +2280,129 @@ Here's a complete example using new v0.1.1 features:
    from edge_gwas.utils import (
        load_plink_data,
        prepare_phenotype_data,
-       stratified_train_test_split,
-       filter_variants_by_maf,
+       apply_standard_qc,
+       validate_and_align_data,
        calculate_grm_gcta,
        load_grm_gcta,
        calculate_pca_plink,
        attach_pcs_to_phenotype,
-       get_pc_covariate_list
+       stratified_train_test_split
    )
    from edge_gwas.visualize import manhattan_plot, qq_plot
    
    # 1. Load data
-   geno_df, var_info = load_plink_data('data.bed', 'data.bim', 'data.fam')
-   pheno_df = prepare_phenotype_data(
-       'phenotype.txt',
+   geno, info = load_plink_data('data.bed', 'data.bim', 'data.fam')
+   pheno = prepare_phenotype_data(
+       'pheno.txt',
        outcome_col='disease',
-       covariate_cols=['age', 'sex'],
-       sample_id_col='IID'
+       covariate_cols=['age', 'sex']
    )
    
-   # 2. QC filtering
-   geno_df = filter_variants_by_maf(geno_df, min_maf=0.01)
+   # 2. QC and alignment
+   geno_qc, pheno_qc = apply_standard_qc(geno, pheno)
+   geno_qc, pheno_qc = validate_and_align_data(geno_qc, pheno_qc)
    
-   # 3. Calculate GRM for population structure control
-   grm_prefix = calculate_grm_gcta('data', output_prefix='grm/output')
-   grm_matrix, grm_ids = load_grm_gcta('grm/output')
+   # 3. Population structure
+   grm_prefix = calculate_grm_gcta('data', output_prefix='grm')
+   grm_matrix, grm_ids = load_grm_gcta('grm')
+   pca = calculate_pca_plink('data', n_pcs=10)
+   pheno_qc = attach_pcs_to_phenotype(pheno_qc, pca, n_pcs=10)
    
-   # 4. Calculate PCA
-   pca_df = calculate_pca_plink('data', n_pcs=10)
-   pheno_df = attach_pcs_to_phenotype(pheno_df, pca_df, n_pcs=10)
-   
-   # 5. Split data
+   # 4. Split data
    train_g, test_g, train_p, test_p = stratified_train_test_split(
-       geno_df, pheno_df, outcome_col='disease', test_size=0.5
+       geno_qc, pheno_qc, outcome_col='disease', test_size=0.5
    )
    
-   # 6. Run EDGE analysis with outcome transformation and GRM
-   edge = EDGEAnalysis(
-       outcome_type='continuous',
-       outcome_transform='rank_inverse_normal'
-   )
-   
-   covariates = ['age', 'sex'] + get_pc_covariate_list(10)
+   # 5. EDGE analysis
+   edge = EDGEAnalysis(outcome_type='binary')
+   covariates = ['age', 'sex'] + [f'PC{i}' for i in range(1, 11)]
    
    alpha_df, gwas_df = edge.run_full_analysis(
-       train_g, train_p,
-       test_g, test_p,
-       outcome='trait',
+       train_g, train_p, test_g, test_p,
+       outcome='disease',
        covariates=covariates,
        grm_matrix=grm_matrix,
        grm_sample_ids=grm_ids,
        output_prefix='results/edge'
    )
    
-   # 7. Visualize results
-   manhattan_plot(gwas_df, output='results/manhattan.png')
-   lambda_gc = qq_plot(gwas_df, output='results/qq.png')
-   
-   print(f"Analysis complete. Lambda GC: {lambda_gc:.3f}")
+   # 6. Visualize
+   manhattan_plot(gwas_df, output='manhattan.png')
+   qq_plot(gwas_df, output='qq.png')
 
 Migration Guide (v0.1.0 → v0.1.1)
 ----------------------------------
 
-**Breaking Changes:**
+**Key Changes:**
 
-1. **Koalas removed**: Replace ``.to_koalas()`` with pandas
+1. **New QC function** - Use ``filter_genotype_data()`` for comprehensive filtering:
 
    .. code-block:: python
    
-      # Old (v0.1.0)
-      import databricks.koalas as ks
-      df = data.to_koalas()
+      # New unified approach
+      geno_qc, pheno_qc = filter_genotype_data(
+          geno, pheno,
+          min_maf=0.01,
+          max_missing_per_variant=0.05,
+          min_call_rate_per_sample=0.95
+      )
+
+2. **Data validation** - New encoding validation and auto-fix:
+
+   .. code-block:: python
+   
+      # Validate and fix minor allele encoding
+      geno_fixed, info_fixed, report = validate_and_fix_encoding(geno, info)
+
+3. **LocusZoom output** - GWAS results now include LocusZoom-compatible columns:
+
+   .. code-block:: python
+   
+      gwas_df = edge.apply_alpha(
+          test_g, test_p,
+          outcome='disease',
+          covariates=covariates,
+          variant_info=info,
+          split_variant_id=True,
+          variant_id_pattern='chr:pos:ref:alt'
+      )
       
-      # New (v0.1.1)
-      import pandas as pd
-      df = data  # Already pandas
+      # Save for LocusZoom
+      edge.save_for_locuszoom(gwas_df, 'locuszoom_input.txt')
 
-2. **PCA functions return indexed DataFrames**: All PCA functions now return DataFrames with IID as index
-
-**New Features to Adopt:**
-
-1. **Use GRM for population structure**:
+4. **GRM support** - Add population structure control:
 
    .. code-block:: python
    
       grm_matrix, grm_ids = load_grm_gcta('grm_prefix')
-      alpha_df = edge.calculate_alpha(..., grm_matrix=grm_matrix, grm_sample_ids=grm_ids)
+      alpha_df = edge.calculate_alpha(
+          ...,
+          grm_matrix=grm_matrix,
+          grm_sample_ids=grm_ids
+      )
 
-2. **Use outcome transformations**:
-
-   .. code-block:: python
-   
-      edge = EDGEAnalysis(outcome_type='continuous', outcome_transform='rank_inverse_normal')
-
-3. **Add PCs as covariates**:
-
-   .. code-block:: python
-   
-      pca_df = calculate_pca_plink('genotypes', n_pcs=10)
-      pheno_df = attach_pcs_to_phenotype(pheno_df, pca_df, n_pcs=10)
-      covariates = ['age', 'sex'] + get_pc_covariate_list(10)
-
-Index of All Functions
-----------------------
-
-**Alphabetical listing:**
-
-* ``additive_gwas()`` - Standard additive GWAS
-* ``apply_alpha()`` - Apply EDGE encoding to test data
-* ``attach_pcs_to_phenotype()`` - Merge PCs with phenotype
-* ``calculate_alpha()`` - Calculate EDGE encoding parameters
-* ``calculate_genomic_inflation()`` - Calculate lambda GC
-* ``calculate_grm_gcta()`` - Calculate GRM with GCTA
-* ``calculate_hwe_pvalues()`` - Calculate HWE p-values
-* ``calculate_pca_pcair()`` - PC-AiR for related samples
-* ``calculate_pca_plink()`` - PCA using PLINK2
-* ``calculate_pca_sklearn()`` - Basic PCA with scikit-learn
-* ``check_case_control_balance()`` - Check case/control ratio
-* ``create_summary_report()`` - Generate text summary
-* ``cross_validated_edge_analysis()`` - K-fold cross-validation
-* ``filter_related_samples()`` - Remove related samples
-* ``filter_samples_by_call_rate()`` - Filter by sample call rate
-* ``filter_variants_by_hwe()`` - Filter by HWE p-value
-* ``filter_variants_by_maf()`` - Filter by minor allele frequency
-* ``filter_variants_by_missing()`` - Filter by missingness
-* ``get_pc_covariate_list()`` - Generate PC covariate names
-* ``get_skipped_snps()`` - Get list of failed variants
-* ``identify_related_samples()`` - Find related pairs
-* ``load_alpha_values()`` - Load pre-calculated alphas
-* ``load_bgen_data()`` - Load BGEN format
-* ``load_grm_gcta()`` - Load GRM from GCTA files
-* ``load_pgen_data()`` - Load PLINK2 PGEN format
-* ``load_plink_data()`` - Load PLINK binary format
-* ``load_vcf_data()`` - Load VCF/VCF.GZ format
-* ``manhattan_plot()`` - Create Manhattan plot
-* ``merge_alpha_with_gwas()`` - Merge alpha and GWAS results
-* ``plot_alpha_distribution()`` - Plot alpha distribution
-* ``prepare_phenotype_data()`` - Load and prepare phenotypes
-* ``qq_plot()`` - Create QQ plot
-* ``run_full_analysis()`` - Complete two-stage EDGE workflow
-* ``save_results()`` - Save GWAS and alpha results
-* ``stratified_train_test_split()`` - Train/test split with stratification
+Function Index
+--------------
 
 **By Category:**
 
 *Core Analysis:*
-
-* ``EDGEAnalysis`` (class)
-
-  * ``calculate_alpha()``
-  * ``apply_alpha()``
-  * ``run_full_analysis()``
-  * ``get_skipped_snps()``
+- ``EDGEAnalysis`` (class) → ``calculate_alpha()``, ``apply_alpha()``, ``run_full_analysis()``
 
 *Data Loading:*
-
-* ``load_plink_data()``
-* ``load_pgen_data()`` (NEW in v0.1.1)
-* ``load_bgen_data()`` (NEW in v0.1.1)
-* ``load_vcf_data()`` (NEW in v0.1.1)
-* ``prepare_phenotype_data()``
-
-*Population Structure (NEW in v0.1.1):*
-
-* ``calculate_grm_gcta()``
-* ``load_grm_gcta()``
-* ``identify_related_samples()``
-* ``filter_related_samples()``
-* ``calculate_pca_plink()``
-* ``calculate_pca_pcair()``
-* ``calculate_pca_sklearn()``
-* ``attach_pcs_to_phenotype()``
-* ``get_pc_covariate_list()``
+- ``load_plink_data()``, ``load_pgen_data()``, ``load_vcf_data()``, ``load_bgen_data()``, ``prepare_phenotype_data()``
 
 *Quality Control:*
+- ``filter_genotype_data()``, ``apply_standard_qc()``, ``validate_genotype_df()``, ``validate_and_fix_encoding()``, ``validate_and_align_data()``, ``diagnose_genotype_data()``
 
-* ``filter_variants_by_maf()``
-* ``filter_variants_by_missing()``
-* ``filter_variants_by_hwe()`` (NEW in v0.1.1)
-* ``filter_samples_by_call_rate()`` (NEW in v0.1.1)
-* ``check_case_control_balance()`` (NEW in v0.1.1)
-* ``calculate_hwe_pvalues()`` (NEW in v0.1.1)
+*Population Structure:*
+- ``calculate_grm_gcta()``, ``load_grm_gcta()``, ``calculate_pca_plink()``, ``attach_pcs_to_phenotype()``, ``identify_related_samples()``, ``filter_related_samples()``
 
-*Statistical Functions:*
-
-* ``calculate_genomic_inflation()``
-* ``merge_alpha_with_gwas()``
-* ``additive_gwas()`` (NEW in v0.1.1)
-* ``cross_validated_edge_analysis()`` (NEW in v0.1.1)
-
-*Data Processing:*
-
-* ``stratified_train_test_split()``
+*Statistical:*
+- ``calculate_genomic_inflation()``, ``additive_gwas()``, ``cross_validated_edge_analysis()``
 
 *Visualization:*
-
-* ``manhattan_plot()``
-* ``qq_plot()``
-* ``plot_alpha_distribution()``
-
-*I/O:*
-
-* ``save_results()``
-* ``load_alpha_values()``
-* ``create_summary_report()``
-
-**Command-Line Tools (NEW in v0.1.1):**
-
-* ``edge-gwas-install-tools`` - Install external tools
-* ``edge-gwas-check-tools`` - Verify tool installation
+- ``manhattan_plot()``, ``qq_plot()``, ``plot_alpha_distribution()``
 
 Quick Function Finder
 ----------------------
