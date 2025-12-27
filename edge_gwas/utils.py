@@ -1144,6 +1144,7 @@ def stratified_train_test_split(
     return train_geno, test_geno, train_pheno, test_pheno
 
 
+
 def filter_variants_by_maf(
     genotype_df: pd.DataFrame,
     min_maf: float = 0.01,
@@ -1163,7 +1164,9 @@ def filter_variants_by_maf(
     n_before = genotype_df.shape[1]
     
     # Vectorized MAF calculation
-    af = genotype_df.mean(axis=0) / 2  # Allele frequency
+    # For hard calls: mean/2 = allele frequency
+    # For dosages: mean/2 = allele frequency
+    af = genotype_df.mean(axis=0, skipna=True) / 2  # Allele frequency
     
     # Handle NaN values (variants with all missing data)
     af = af.fillna(0)
@@ -1172,14 +1175,16 @@ def filter_variants_by_maf(
     maf = np.minimum(af, 1 - af)
     
     # Filter variants
-    variants_to_keep = maf[maf >= min_maf].index
-    genotype_df_filtered = genotype_df[variants_to_keep]
+    variants_to_keep = maf >= min_maf
+    genotype_df_filtered = genotype_df.loc[:, variants_to_keep]
     
     n_after = genotype_df_filtered.shape[1]
     
     if verbose:
         logger.info(f"Filtered variants by MAF >= {min_maf}")
         logger.info(f"Kept {n_after}/{n_before} variants ({n_after/n_before*100:.1f}%)")
+        if n_after > 0:
+            logger.info(f"MAF range in filtered data: {maf[variants_to_keep].min():.4f} - {maf[variants_to_keep].max():.4f}")
     
     return genotype_df_filtered
 
@@ -1194,7 +1199,7 @@ def filter_variants_by_missing(
     
     Args:
         genotype_df: Genotype DataFrame
-        max_missing: Maximum proportion of missing genotypes allowed
+        max_missing: Maximum proportion of missing genotypes allowed (0-1)
         verbose: Print filtering information
         
     Returns:
@@ -1206,14 +1211,17 @@ def filter_variants_by_missing(
     missing_rates = genotype_df.isna().mean(axis=0)
     
     # Filter variants
-    variants_to_keep = missing_rates[missing_rates <= max_missing].index
-    genotype_df_filtered = genotype_df[variants_to_keep]
+    variants_to_keep = missing_rates <= max_missing
+    genotype_df_filtered = genotype_df.loc[:, variants_to_keep]
     
     n_after = genotype_df_filtered.shape[1]
     
     if verbose:
         logger.info(f"Filtered variants by missing rate <= {max_missing}")
         logger.info(f"Kept {n_after}/{n_before} variants ({n_after/n_before*100:.1f}%)")
+        if n_after > 0:
+            remaining_missing = missing_rates[variants_to_keep]
+            logger.info(f"Missing rate range in filtered data: {remaining_missing.min():.4f} - {remaining_missing.max():.4f}")
     
     return genotype_df_filtered
 
@@ -1229,38 +1237,222 @@ def filter_samples_by_call_rate(
     
     Args:
         genotype_df: Genotype DataFrame (samples as index)
-        phenotype_df: Phenotype DataFrame (IID as index)
-        min_call_rate: Minimum call rate (proportion of non-missing genotypes)
+        phenotype_df: Phenotype DataFrame (sample IDs as index)
+        min_call_rate: Minimum call rate (proportion of non-missing genotypes, 0-1)
         verbose: Print filtering information
         
     Returns:
         Tuple of (filtered_genotype_df, filtered_phenotype_df)
     """
-    n_before = genotype_df.shape[0]
+    n_samples_before = genotype_df.shape[0]
+    n_pheno_before = phenotype_df.shape[0]
     
-    # Calculate call rate for each sample
+    # Calculate call rate for each sample (proportion of non-missing)
     sample_call_rate = genotype_df.notna().mean(axis=1)
     
     # Filter samples
-    good_samples = sample_call_rate[sample_call_rate >= min_call_rate].index
+    samples_to_keep = sample_call_rate >= min_call_rate
+    good_samples = genotype_df.index[samples_to_keep]
     
+    # Filter genotype data
+    genotype_df_filtered = genotype_df.loc[samples_to_keep, :]
+    
+    # Filter phenotype data - keep samples that are in good_samples
     # Convert to strings for matching
-    good_samples_str = good_samples.astype(str)
+    good_samples_str = set(good_samples.astype(str))
     pheno_index_str = phenotype_df.index.astype(str)
+    pheno_mask = pheno_index_str.isin(good_samples_str)
+    phenotype_df_filtered = phenotype_df[pheno_mask].copy()
     
-    # Filter both DataFrames
-    genotype_df_filtered = genotype_df.loc[good_samples]
-    phenotype_df_filtered = phenotype_df[pheno_index_str.isin(good_samples_str)].copy()
-    
-    n_after = genotype_df_filtered.shape[0]
+    n_samples_after = genotype_df_filtered.shape[0]
+    n_pheno_after = phenotype_df_filtered.shape[0]
     
     if verbose:
         logger.info(f"Filtered samples by call rate >= {min_call_rate}")
-        logger.info(f"Kept {n_after}/{n_before} samples ({n_after/n_before*100:.1f}%)")
-        logger.info(f"Phenotype samples: {len(phenotype_df_filtered)}")
+        logger.info(f"Genotype samples: kept {n_samples_after}/{n_samples_before} ({n_samples_after/n_samples_before*100:.1f}%)")
+        logger.info(f"Phenotype samples: kept {n_pheno_after}/{n_pheno_before} ({n_pheno_after/n_pheno_before*100:.1f}%)")
+        if n_samples_after > 0:
+            remaining_call_rates = sample_call_rate[samples_to_keep]
+            logger.info(f"Call rate range: {remaining_call_rates.min():.4f} - {remaining_call_rates.max():.4f}")
     
     return genotype_df_filtered, phenotype_df_filtered
 
+
+def filter_genotype_data(
+    genotype_df: pd.DataFrame,
+    phenotype_df: Optional[pd.DataFrame] = None,
+    min_maf: Optional[float] = None,
+    max_missing_per_variant: Optional[float] = None,
+    min_call_rate_per_sample: Optional[float] = None,
+    verbose: bool = True
+) -> Union[pd.DataFrame, Tuple[pd.DataFrame, pd.DataFrame]]:
+    """
+    Comprehensive genotype data filtering with multiple QC criteria.
+    
+    Applies filters in this order:
+    1. Variant MAF filter (if min_maf specified)
+    2. Variant missing rate filter (if max_missing_per_variant specified)
+    3. Sample call rate filter (if min_call_rate_per_sample specified)
+    
+    Args:
+        genotype_df: Genotype DataFrame (samples x variants)
+        phenotype_df: Optional phenotype DataFrame (required if filtering samples)
+        min_maf: Minimum minor allele frequency (e.g., 0.01 for 1%)
+                If None, no MAF filtering
+        max_missing_per_variant: Maximum missing rate per variant (e.g., 0.1 for 10%)
+                                If None, no variant missing rate filtering
+        min_call_rate_per_sample: Minimum call rate per sample (e.g., 0.95 for 95%)
+                                 If None, no sample filtering
+        verbose: Print filtering information
+        
+    Returns:
+        If min_call_rate_per_sample is None: filtered_genotype_df
+        If min_call_rate_per_sample is specified: (filtered_genotype_df, filtered_phenotype_df)
+        
+    Examples:
+        >>> # Filter by MAF only
+        >>> geno_filtered = filter_genotype_data(geno, min_maf=0.01)
+        
+        >>> # Filter by MAF and missing rate
+        >>> geno_filtered = filter_genotype_data(
+        ...     geno, min_maf=0.01, max_missing_per_variant=0.1
+        ... )
+        
+        >>> # Filter variants and samples
+        >>> geno_filtered, pheno_filtered = filter_genotype_data(
+        ...     geno, pheno, 
+        ...     min_maf=0.01, 
+        ...     max_missing_per_variant=0.1,
+        ...     min_call_rate_per_sample=0.95
+        ... )
+        
+        >>> # No filtering (just returns copy)
+        >>> geno_copy = filter_genotype_data(geno)
+    """
+    if verbose:
+        logger.info("="*70)
+        logger.info("Starting genotype QC filtering")
+        logger.info("="*70)
+        logger.info(f"Input: {genotype_df.shape[0]} samples x {genotype_df.shape[1]} variants")
+    
+    # Start with copy of input data
+    geno_filtered = genotype_df.copy()
+    pheno_filtered = phenotype_df.copy() if phenotype_df is not None else None
+    
+    n_variants_initial = geno_filtered.shape[1]
+    n_samples_initial = geno_filtered.shape[0]
+    
+    # Track filtering steps
+    filter_steps = []
+    
+    # Step 1: MAF filter
+    if min_maf is not None:
+        if verbose:
+            logger.info(f"\n[1/3] Filtering variants by MAF >= {min_maf}")
+        
+        n_before = geno_filtered.shape[1]
+        geno_filtered = filter_variants_by_maf(geno_filtered, min_maf=min_maf, verbose=verbose)
+        n_after = geno_filtered.shape[1]
+        
+        filter_steps.append({
+            'step': 'MAF filter',
+            'criterion': f'>= {min_maf}',
+            'before': n_before,
+            'after': n_after,
+            'removed': n_before - n_after
+        })
+    else:
+        if verbose:
+            logger.info("\n[1/3] Skipping MAF filter (not specified)")
+    
+    # Step 2: Variant missing rate filter
+    if max_missing_per_variant is not None:
+        if verbose:
+            logger.info(f"\n[2/3] Filtering variants by missing rate <= {max_missing_per_variant}")
+        
+        n_before = geno_filtered.shape[1]
+        geno_filtered = filter_variants_by_missing(
+            geno_filtered, 
+            max_missing=max_missing_per_variant, 
+            verbose=verbose
+        )
+        n_after = geno_filtered.shape[1]
+        
+        filter_steps.append({
+            'step': 'Variant missing',
+            'criterion': f'<= {max_missing_per_variant}',
+            'before': n_before,
+            'after': n_after,
+            'removed': n_before - n_after
+        })
+    else:
+        if verbose:
+            logger.info("\n[2/3] Skipping variant missing rate filter (not specified)")
+    
+    # Step 3: Sample call rate filter
+    if min_call_rate_per_sample is not None:
+        if phenotype_df is None:
+            raise ValueError(
+                "phenotype_df must be provided when filtering by sample call rate"
+            )
+        
+        if verbose:
+            logger.info(f"\n[3/3] Filtering samples by call rate >= {min_call_rate_per_sample}")
+        
+        n_samples_before = geno_filtered.shape[0]
+        n_pheno_before = pheno_filtered.shape[0]
+        
+        geno_filtered, pheno_filtered = filter_samples_by_call_rate(
+            geno_filtered,
+            pheno_filtered,
+            min_call_rate=min_call_rate_per_sample,
+            verbose=verbose
+        )
+        
+        n_samples_after = geno_filtered.shape[0]
+        n_pheno_after = pheno_filtered.shape[0]
+        
+        filter_steps.append({
+            'step': 'Sample call rate',
+            'criterion': f'>= {min_call_rate_per_sample}',
+            'before': n_samples_before,
+            'after': n_samples_after,
+            'removed': n_samples_before - n_samples_after
+        })
+    else:
+        if verbose:
+            logger.info("\n[3/3] Skipping sample call rate filter (not specified)")
+    
+    # Summary
+    if verbose:
+        logger.info("\n" + "="*70)
+        logger.info("FILTERING SUMMARY")
+        logger.info("="*70)
+        
+        if filter_steps:
+            summary_df = pd.DataFrame(filter_steps)
+            print(summary_df.to_string(index=False))
+            print()
+        
+        n_variants_final = geno_filtered.shape[1]
+        n_samples_final = geno_filtered.shape[0]
+        
+        logger.info(f"Variants: {n_variants_initial} → {n_variants_final} "
+                   f"({n_variants_final/n_variants_initial*100:.1f}% retained)")
+        logger.info(f"Samples:  {n_samples_initial} → {n_samples_final} "
+                   f"({n_samples_final/n_samples_initial*100:.1f}% retained)")
+        
+        if pheno_filtered is not None:
+            logger.info(f"Phenotype samples: {pheno_filtered.shape[0]}")
+        
+        logger.info("="*70)
+    
+    # Return based on whether sample filtering was done
+    if min_call_rate_per_sample is not None:
+        return geno_filtered, pheno_filtered
+    else:
+        return geno_filtered
+        
 
 def check_case_control_balance(
     phenotype_df: pd.DataFrame,
