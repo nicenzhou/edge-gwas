@@ -511,7 +511,12 @@ def load_vcf_data(
         # Get genotypes
         if dosage and 'DS' in variant.FORMAT:
             # Use dosages if available
-            geno = variant.format('DS')[:, 0]  # Get dosage for first alt allele
+            ds_values = variant.format('DS')
+            # Handle both 1D and 2D arrays
+            if ds_values.ndim == 2:
+                geno = ds_values[:, 0]  # Get dosage for first alt allele
+            else:
+                geno = ds_values  # Already 1D
         else:
             # Use hard calls (convert GT to 0/1/2)
             gt = variant.genotypes
@@ -568,8 +573,8 @@ def load_vcf_data(
                 if len(valid_geno) == 0:
                     continue
                 
-                # Calculate mean dosage (convert to scalar)
-                mean_dosage = float(valid_geno.mean())  # FIXED: Convert to scalar
+                # Calculate mean dosage - ensure it's a scalar
+                mean_dosage = np.mean(valid_geno.values)  # FIXED: Use np.mean on .values
                 alt_freq = mean_dosage / 2
                 
                 # If ALT allele frequency > 0.5, flip
@@ -602,8 +607,8 @@ def load_vcf_data(
         valid_geno = geno.dropna()
         if len(valid_geno) > 0:
             if dosage:
-                # For dosage data (convert to scalar)
-                alt_freq = float(valid_geno.mean()) / 2  # FIXED: Convert to scalar
+                # For dosage data - ensure scalar
+                alt_freq = np.mean(valid_geno.values) / 2  # FIXED: Use np.mean on .values
             else:
                 # For hard calls
                 alt_freq = (2 * (valid_geno == 2).sum() + (valid_geno == 1).sum()) / (2 * len(valid_geno))
