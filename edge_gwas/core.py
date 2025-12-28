@@ -474,9 +474,20 @@ class EDGEAnalysis:
                 self.skipped_snps.append(snp_name)
                 return pd.DataFrame()
         
+        # Store the column names for het and hom BEFORE any transformation
+        het_col_name = f'{snp_name}_het'
+        hom_col_name = f'{snp_name}_hom'
+        
         # Add constant ONLY if NOT mean-centered
         if not mean_centered:
             X = sm.add_constant(X)
+        
+        # Store feature names after potentially adding constant
+        feature_names = X.columns.tolist()
+        
+        # Find the indices of het and hom columns
+        het_idx = feature_names.index(het_col_name)
+        hom_idx = feature_names.index(hom_col_name)
         
         # Apply GRM if provided
         if grm is not None and grm_sample_ids is not None:
@@ -505,23 +516,25 @@ class EDGEAnalysis:
                         y.values, X.values, aligned_grm
                     )
                     
-                    # Create a result-like object
+                    # Create a result-like object with proper indexing
                     class MixedModelResult:
-                        def __init__(self, res_dict, feature_names):
+                        def __init__(self, res_dict, feature_names, het_idx, hom_idx):
+                            self.feature_names = feature_names
+                            self.het_idx = het_idx
+                            self.hom_idx = hom_idx
                             self.params = pd.Series(res_dict['params'], index=feature_names)
                             self.bse = pd.Series(res_dict['bse'], index=feature_names)
                             self.tvalues = pd.Series(res_dict['tvalues'], index=feature_names)
                             self.pvalues = pd.Series(res_dict['pvalues'], index=feature_names)
-                            self._conf_int_lower = pd.Series(res_dict['conf_int_lower'], index=feature_names)
-                            self._conf_int_upper = pd.Series(res_dict['conf_int_upper'], index=feature_names)
+                            self._conf_int = pd.DataFrame({
+                                0: res_dict['conf_int_lower'],
+                                1: res_dict['conf_int_upper']
+                            }, index=feature_names)
                         
                         def conf_int(self):
-                            return pd.DataFrame({
-                                0: self._conf_int_lower,
-                                1: self._conf_int_upper
-                            })
+                            return self._conf_int
                     
-                    result = MixedModelResult(result_dict, X.columns)
+                    result = MixedModelResult(result_dict, feature_names, het_idx, hom_idx)
                     
                 except Exception as e:
                     logger.warning(f"GRM-based logistic model fitting failed for {snp_name}: {str(e)}")
@@ -543,22 +556,25 @@ class EDGEAnalysis:
                 self.skipped_snps.append(snp_name)
                 return pd.DataFrame()
         
-        # Extract results
+        # Extract results - use the original column names
         try:
+            # Get confidence intervals
+            conf_int_df = result.conf_int()
+            
             result_dict = {
                 'snp': [snp_name],
-                'coef_het': [result.params[f'{snp_name}_het']],
-                'coef_hom': [result.params[f'{snp_name}_hom']],
-                'std_err_het': [result.bse[f'{snp_name}_het']],
-                'std_err_hom': [result.bse[f'{snp_name}_hom']],
-                'stat_het': [result.tvalues[f'{snp_name}_het']],
-                'stat_hom': [result.tvalues[f'{snp_name}_hom']],
-                'pval_het': [result.pvalues[f'{snp_name}_het']],
-                'pval_hom': [result.pvalues[f'{snp_name}_hom']],
-                'conf_int_low_het': [result.conf_int().loc[f'{snp_name}_het', 0]],
-                'conf_int_high_het': [result.conf_int().loc[f'{snp_name}_het', 1]],
-                'conf_int_low_hom': [result.conf_int().loc[f'{snp_name}_hom', 0]],
-                'conf_int_high_hom': [result.conf_int().loc[f'{snp_name}_hom', 1]],
+                'coef_het': [result.params[het_col_name]],
+                'coef_hom': [result.params[hom_col_name]],
+                'std_err_het': [result.bse[het_col_name]],
+                'std_err_hom': [result.bse[hom_col_name]],
+                'stat_het': [result.tvalues[het_col_name]],
+                'stat_hom': [result.tvalues[hom_col_name]],
+                'pval_het': [result.pvalues[het_col_name]],
+                'pval_hom': [result.pvalues[hom_col_name]],
+                'conf_int_low_het': [conf_int_df.loc[het_col_name, 0]],
+                'conf_int_high_het': [conf_int_df.loc[het_col_name, 1]],
+                'conf_int_low_hom': [conf_int_df.loc[hom_col_name, 0]],
+                'conf_int_high_hom': [conf_int_df.loc[hom_col_name, 1]],
                 'n_samples': [len(y)]
             }
             
@@ -573,6 +589,8 @@ class EDGEAnalysis:
             
         except Exception as e:
             logger.warning(f"Result extraction failed for {snp_name}: {str(e)}")
+            import traceback
+            logger.warning(f"Traceback: {traceback.format_exc()}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
 
