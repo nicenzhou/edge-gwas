@@ -430,7 +430,7 @@ class EDGEAnalysis:
         Fit codominant model (separate effects for het and hom).
         
         Args:
-            mean_centered: If True, mean-center outcome and covariates and fit without intercept
+            mean_centered: If True, fit codominant regression without intercept.
         """
         # Merge genotype data
         data = pd.merge(
@@ -467,30 +467,8 @@ class EDGEAnalysis:
                 self.skipped_snps.append(snp_name)
                 return pd.DataFrame()
         
-        # Mean-centering if requested
-        if mean_centered:
-            # Mean-center outcome
-            if self.outcome_type == 'binary':
-                prevalence = y.mean()
-                y = y - prevalence
-                if self.verbose:
-                    logger.info(f"Mean-centering binary outcome. Prevalence: {prevalence:.4f}")
-            else:
-                mean_y = y.mean()
-                y = y - mean_y
-                if self.verbose:
-                    logger.info(f"Mean-centering continuous outcome. Mean: {mean_y:.4f}")
-            
-            # Mean-center all predictors (genotypes and covariates)
-            X = X - X.mean()
-            
-            # NO intercept for mean-centered model
-            add_intercept = False
-        else:
-            # Add constant for standard model
-            add_intercept = True
-        
-        if add_intercept:
+        # Add constant ONLY if NOT mean-centered
+        if not mean_centered:
             X = sm.add_constant(X)
         
         # Apply GRM if provided
