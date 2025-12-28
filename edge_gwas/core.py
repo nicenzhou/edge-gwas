@@ -237,7 +237,8 @@ class EDGEAnalysis:
         y: pd.Series,
         X: pd.DataFrame,
         grm: np.ndarray,
-        h2: float = 0.5
+        h2: float = 0.5,
+        cache_key: Optional[str] = None
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Transform phenotype and covariates using GRM for linear mixed model.
@@ -250,37 +251,129 @@ class EDGEAnalysis:
             X: Design matrix (genotypes + covariates)
             grm: Genetic relationship matrix
             h2: Assumed heritability (default: 0.5)
+            cache_key: Optional key for caching the transformation matrix
             
         Returns:
             Tuple of (transformed_y, transformed_X)
         """
         n = len(y)
         
-        # Construct V = h2*GRM + (1-h2)*I
-        V = h2 * grm + (1 - h2) * np.eye(n)
+        # Initialize cache if it doesn't exist
+        if not hasattr(self, '_grm_transform_cache'):
+            self._grm_transform_cache = {}
         
-        # Cholesky decomposition of V
+        # Check cache
+        if cache_key is not None and cache_key in self._grm_transform_cache:
+            L_inv = self._grm_transform_cache[cache_key]
+        else:
+            # Construct V = h2*GRM + (1-h2)*I
+            V = h2 * grm + (1 - h2) * np.eye(n)
+            
+            # Cholesky decomposition of V
+            try:
+                L = linalg.cholesky(V, lower=True)
+                L_inv = linalg.solve_triangular(L, np.eye(n), lower=True)
+                
+                # Cache if key provided
+                if cache_key is not None:
+                    self._grm_transform_cache[cache_key] = L_inv
+                    if self.verbose:
+                        logger.info(f"Cached GRM transformation for {n} samples")
+                        
+            except linalg.LinAlgError:
+                logger.warning("GRM matrix is singular, using regularization")
+                # Add small regularization term
+                V_reg = V + 1e-6 * np.eye(n)
+                L = linalg.cholesky(V_reg, lower=True)
+                L_inv = linalg.solve_triangular(L, np.eye(n), lower=True)
+                
+                # Cache if key provided
+                if cache_key is not None:
+                    self._grm_transform_cache[cache_key] = L_inv
+        
+        # Transform y and X: V^(-1/2) * y and V^(-1/2) * X
+        y_transformed = L_inv @ y.values
+        X_transformed = L_inv @ X.values
+        
+        return y_transformed, X_transformed
+
+
+    def _fit_logistic_mixed_model_fast(
+        self,
+        y: np.ndarray,
+        X: np.ndarray,
+        grm: np.ndarray
+    ) -> Dict:
+        """
+        Fast approximate logistic mixed model using variance component adjustment.
+        
+        This uses a simpler approximation that's much faster than full IRLS.
+        It fits standard logistic regression and adjusts standard errors for relatedness.
+        
+        Args:
+            y: Binary outcome vector
+            X: Design matrix (including intercept)
+            grm: Genetic relationship matrix
+            
+        Returns:
+            Dictionary with coefficients, standard errors, and p-values
+        """
+        n = X.shape[0]
+        p = X.shape[1]
+        
+        # Step 1: Fit standard logistic regression (no GRM)
         try:
-            L = linalg.cholesky(V, lower=True)
-            L_inv = linalg.solve_triangular(L, np.eye(n), lower=True)
+            init_model = sm.Logit(y, X)
+            init_result = init_model.fit(disp=False, maxiter=100)
+            beta = init_result.params.values
             
-            # Transform y and X: V^(-1/2) * y and V^(-1/2) * X
-            y_transformed = L_inv @ y.values
-            X_transformed = L_inv @ X.values
+            # Calculate genomic inflation factor from GRM
+            # This approximates the impact of relatedness on standard errors
+            grm_diag = np.diag(grm)
+            grm_off_diag = grm.copy()
+            np.fill_diagonal(grm_off_diag, 0)
             
-            return y_transformed, X_transformed
+            # Average absolute off-diagonal relatedness
+            avg_rel = np.mean(np.abs(grm_off_diag))
             
-        except linalg.LinAlgError:
-            logger.warning("GRM matrix is singular, using regularization")
-            # Add small regularization term
-            V_reg = V + 1e-6 * np.eye(n)
-            L = linalg.cholesky(V_reg, lower=True)
-            L_inv = linalg.solve_triangular(L, np.eye(n), lower=True)
+            # Inflation factor (empirical approximation)
+            # Higher relatedness = more inflation
+            inflation = np.sqrt(1 + avg_rel * n / 50)
             
-            y_transformed = L_inv @ y.values
-            X_transformed = L_inv @ X.values
+            # Inflate standard errors
+            se = init_result.bse.values * inflation
             
-            return y_transformed, X_transformed
+            # Recalculate statistics with inflated SEs
+            z_stats = beta / se
+            pvals = 2 * (1 - norm.cdf(np.abs(z_stats)))
+            
+            # Confidence intervals
+            ci_lower = beta - 1.96 * se
+            ci_upper = beta + 1.96 * se
+            
+            return {
+                'params': beta,
+                'bse': se,
+                'tvalues': z_stats,
+                'pvalues': pvals,
+                'conf_int_lower': ci_lower,
+                'conf_int_upper': ci_upper
+            }
+            
+        except Exception as e:
+            logger.warning(f"Fast logistic approximation failed: {str(e)}")
+            # Fallback to simple estimates
+            beta = np.zeros(p)
+            se = np.ones(p) * np.inf
+            return {
+                'params': beta,
+                'bse': se,
+                'tvalues': np.zeros(p),
+                'pvalues': np.ones(p),
+                'conf_int_lower': beta - 1.96 * se,
+                'conf_int_upper': beta + 1.96 * se
+            }
+        
     
     def _fit_ols_with_method(
         self,
@@ -534,12 +627,15 @@ class EDGEAnalysis:
             # Subset the already-aligned GRM to common samples
             current_grm = grm_matrix[np.ix_(grm_indices, grm_indices)]
             
+            # Create cache key from sorted sample IDs
+            cache_key = f"{len(common_samples)}_{hash(tuple(sorted(common_samples)))}"
+            
             if self.outcome_type == 'continuous' or mean_centered:
                 # Transform data for linear mixed model
                 # (Use linear model for mean-centered binary outcome too)
                 try:
                     y_transformed, X_transformed = self._transform_with_grm_linear(
-                        y_subset, X_subset, current_grm
+                        y_subset, X_subset, current_grm, cache_key=cache_key
                     )
                     
                     # Fit OLS on transformed data
@@ -612,15 +708,19 @@ class EDGEAnalysis:
                     return pd.DataFrame()
                     
             else:  # binary outcome without mean-centering
-                # Fit logistic mixed model
+                # Fit logistic mixed model - use fast approximation if enabled
                 try:
-                    result_dict = self._fit_logistic_mixed_model(
-                        y_subset.values, X_subset.values, current_grm
-                    )
+                    if hasattr(self, '_use_fast_grm') and self._use_fast_grm:
+                        result_dict = self._fit_logistic_mixed_model_fast(
+                            y_subset.values, X_subset.values, current_grm
+                        )
+                    else:
+                        result_dict = self._fit_logistic_mixed_model(
+                            y_subset.values, X_subset.values, current_grm
+                        )
                     
                     # Extract results directly from dict using indices
-                    result_data = {
-                        'snp': [snp_name],
+                    result_data = {'snp': [snp_name],
                         'coef_het': [result_dict['params'][het_idx]],
                         'coef_hom': [result_dict['params'][hom_idx]],
                         'std_err_het': [result_dict['bse'][het_idx]],
@@ -733,6 +833,8 @@ class EDGEAnalysis:
             logger.warning(f"Traceback: {traceback.format_exc()}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
+
+                    
     
     def _fit_edge_model(
         self,
@@ -824,11 +926,14 @@ class EDGEAnalysis:
             # Subset the already-aligned GRM to common samples
             current_grm = grm_matrix[np.ix_(grm_indices, grm_indices)]
             
+            # Create cache key from sorted sample IDs
+            cache_key = f"{len(common_samples)}_{hash(tuple(sorted(common_samples)))}"
+            
             if self.outcome_type == 'continuous':
                 # Transform data for linear mixed model
                 try:
                     y_transformed, X_transformed = self._transform_with_grm_linear(
-                        y_subset, X_subset, current_grm
+                        y_subset, X_subset, current_grm, cache_key=cache_key
                     )
                     
                     # Fit OLS on transformed data
@@ -883,11 +988,16 @@ class EDGEAnalysis:
                     return pd.DataFrame()
                     
             else:  # binary outcome
-                # Fit logistic mixed model
+                # Fit logistic mixed model - use fast approximation if enabled
                 try:
-                    result_dict = self._fit_logistic_mixed_model(
-                        y_subset.values, X_subset.values, current_grm
-                    )
+                    if hasattr(self, '_use_fast_grm') and self._use_fast_grm:
+                        result_dict = self._fit_logistic_mixed_model_fast(
+                            y_subset.values, X_subset.values, current_grm
+                        )
+                    else:
+                        result_dict = self._fit_logistic_mixed_model(
+                            y_subset.values, X_subset.values, current_grm
+                        )
                     
                     # Extract results directly using indices
                     result_data = {
@@ -928,7 +1038,7 @@ class EDGEAnalysis:
         except Exception as e:
             logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
             import traceback
-            logger.warning(f"Traceback: {traceback.format_exc()}")
+            logger.warning(f"logger.warning(f"Traceback: {traceback.format_exc()}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
         
@@ -993,7 +1103,8 @@ class EDGEAnalysis:
         variant_info: Optional[pd.DataFrame] = None,
         grm_matrix: Optional[np.ndarray] = None,
         grm_sample_ids: Optional[pd.DataFrame] = None,
-        mean_centered: bool = False
+        mean_centered: bool = False,
+        use_fast_approximation: bool = True
     ) -> pd.DataFrame:
         """
         Calculate EDGE alpha values from training data.
@@ -1012,6 +1123,8 @@ class EDGEAnalysis:
             grm_sample_ids: DataFrame with FID, IID, and sample_id corresponding to GRM rows
             mean_centered: If True, use mean-centered codominant model without intercept
                           (default: False)
+            use_fast_approximation: If True, use faster approximation for GRM-based binary models
+                                   (default: True)
             
         Returns:
             DataFrame with alpha values for each variant
@@ -1024,6 +1137,12 @@ class EDGEAnalysis:
         """
         self.skipped_snps = []
         alpha_results = []
+        
+        # Set flag for fast approximation
+        self._use_fast_grm = use_fast_approximation and (grm_matrix is not None)
+        
+        if self._use_fast_grm and self.verbose and self.outcome_type == 'binary':
+            logger.info("Using fast approximation for GRM-based binary outcome analysis")
         
         # Prepare GRM if provided
         aligned_grm = None
@@ -1176,7 +1295,8 @@ class EDGEAnalysis:
         alpha_values: Optional[pd.DataFrame] = None,
         grm_matrix: Optional[np.ndarray] = None,
         grm_sample_ids: Optional[pd.DataFrame] = None,
-        variant_info: Optional[pd.DataFrame] = None
+        variant_info: Optional[pd.DataFrame] = None,
+        use_fast_approximation: bool = True
     ) -> pd.DataFrame:
         """
         Apply EDGE alpha values to test data and perform GWAS.
@@ -1197,6 +1317,8 @@ class EDGEAnalysis:
             variant_info: Optional DataFrame with variant information
                          Index: variant_id
                          Columns: chrom, pos, ref_allele, alt_allele, MAF
+            use_fast_approximation: If True, use faster approximation for GRM-based binary models
+                                   (default: True)
             
         Returns:
             DataFrame with GWAS results
@@ -1224,6 +1346,12 @@ class EDGEAnalysis:
         # Set variant_id as index for alpha_values if not already
         if alpha_values.index.name != 'variant_id':
             alpha_values = alpha_values.set_index('variant_id')
+        
+        # Set flag for fast approximation
+        self._use_fast_grm = use_fast_approximation and (grm_matrix is not None)
+        
+        if self._use_fast_grm and self.verbose and self.outcome_type == 'binary':
+            logger.info("Using fast approximation for GRM-based binary outcome analysis")
         
         # Prepare GRM if provided
         aligned_grm = None
@@ -1336,7 +1464,6 @@ class EDGEAnalysis:
             info_cols_from_variant_info = []
             for col in ['chrom', 'pos', 'ref_allele', 'alt_allele']:
                 if col in variant_info.columns:
-                    # Only add if not already added from alpha_values, or to override
                     info_cols_from_variant_info.append(col)
             
             if info_cols_from_variant_info:
@@ -1465,6 +1592,7 @@ class EDGEAnalysis:
         grm_matrix: Optional[np.ndarray] = None,
         grm_sample_ids: Optional[pd.DataFrame] = None,
         mean_centered: bool = False,
+        use_fast_approximation: bool = True,
         output_prefix: Optional[str] = None
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
@@ -1482,8 +1610,10 @@ class EDGEAnalysis:
                          Index: variant_id
                          Columns: chrom, pos, ref_allele, alt_allele, MAF
             grm_matrix: Optional GRM matrix from GCTA
-            grm_sample_ids: Optional sample IDs for GRM
+            grm_sample_ids: Optional sample IDs for GRM (DataFrame with FID, IID, sample_id)
             mean_centered: If True, use mean-centered model without intercept (default: False)
+            use_fast_approximation: If True, use faster approximation for GRM-based binary models
+                                   (default: True) - significant speed improvement for binary outcomes
             output_prefix: Optional prefix for output files
                 
         Returns:
@@ -1499,6 +1629,9 @@ class EDGEAnalysis:
         
         logger.info(f"OLS optimization method: {self.ols_method}")
         
+        if grm_matrix is not None and use_fast_approximation and self.outcome_type == 'binary':
+            logger.info("Fast approximation enabled for GRM-based binary outcome analysis")
+        
         # Calculate alpha values on training data
         logger.info("Step 1: Calculating alpha values on training data...")
         alpha_df = self.calculate_alpha(
@@ -1509,7 +1642,8 @@ class EDGEAnalysis:
             variant_info,
             grm_matrix,
             grm_sample_ids,
-            mean_centered
+            mean_centered,
+            use_fast_approximation
         )
         
         # Save alpha values if output prefix provided
@@ -1530,7 +1664,8 @@ class EDGEAnalysis:
             alpha_df,  # Pass the alpha_df with variant information
             grm_matrix,
             grm_sample_ids,
-            variant_info  # Also pass variant_info for completeness
+            variant_info,  # Also pass variant_info for completeness
+            use_fast_approximation
         )
         
         # Save GWAS results if output prefix provided
