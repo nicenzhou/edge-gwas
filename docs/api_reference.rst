@@ -131,39 +131,41 @@ Calculate encoding parameters from training data.
        covariates,
        variant_info=None,
        grm_matrix=None,        # NEW in v0.1.1
-       grm_sample_ids=None     # NEW in v0.1.1
+       grm_sample_ids=None,    # NEW in v0.1.1
+       mean_centered=False     # NEW in v0.1.2
    )
 
 **Parameters:**
 
-* ``genotype_data`` (pandas.DataFrame): Genotype matrix (samples × variants)
+* ``genotype_data`` (pandas.DataFrame): Genotype matrix (samples × variants), values {0, 1, 2}
 * ``phenotype_df`` (pandas.DataFrame): Phenotype data with outcome and covariates
 * ``outcome`` (str): Name of outcome column
 * ``covariates`` (list): List of covariate column names
-* ``variant_info`` (pandas.DataFrame, optional): Variant information (chr, pos, etc.)
+* ``variant_info`` (pandas.DataFrame, optional): Variant information (variant_id, chr, pos, ref_allele, alt_allele)
 * ``grm_matrix`` (numpy.ndarray, optional): **NEW in v0.1.1** - GRM matrix for population structure control
 * ``grm_sample_ids`` (pandas.DataFrame, optional): **NEW in v0.1.1** - Sample IDs corresponding to GRM
+* ``mean_centered`` (bool, optional): **NEW in v0.1.2** - Use mean-centered model without intercept (default: False)
 
 **Returns:**
 
-* ``pandas.DataFrame``: Alpha values with columns:
+* ``pandas.DataFrame``: Alpha values with columns: variant_id, alpha_value, ref_allele, alt_allele, eaf, coef_het, coef_hom, std_err_het, std_err_hom, pval_het, pval_hom, n_samples
 
-  * ``variant_id``: SNP identifier
-  * ``alpha_value``: Encoding parameter
-  * ``eaf``: Effect allele frequency
-  * ``coef_het``: Heterozygous coefficient
-  * ``coef_hom``: Homozygous coefficient
-
-**Example with GRM:**
+**Examples:**
 
 .. code-block:: python
 
-   from edge_gwas.utils import load_grm_gcta
+   # Basic usage
+   alpha_df = edge.calculate_alpha(
+       genotype_data=train_geno,
+       phenotype_df=train_pheno,
+       outcome='trait',
+       covariates=['age', 'sex']
+   )
    
-   # Load GRM for population structure control
+   # With GRM for population structure control
+   from edge_gwas.utils import load_grm_gcta
    grm_matrix, grm_ids = load_grm_gcta('grm_prefix')
    
-   # Calculate alpha with GRM
    alpha_df = edge.calculate_alpha(
        genotype_data=train_geno,
        phenotype_df=train_pheno,
@@ -172,6 +174,21 @@ Calculate encoding parameters from training data.
        grm_matrix=grm_matrix,
        grm_sample_ids=grm_ids
    )
+   
+   # Mean-centered model (Y - E[Y], no intercept)
+   alpha_df = edge.calculate_alpha(
+       genotype_data=train_geno,
+       phenotype_df=train_pheno,
+       outcome='trait',
+       covariates=['age', 'sex'],
+       mean_centered=True
+   )
+
+**Notes:**
+
+* Model: ``Y ~ β_het × I(geno=1) + β_hom × I(geno=2) + covariates``
+* Alpha: ``α = β_het / β_hom``
+* When ``mean_centered=True``: outcome and predictors are centered, no intercept
 
 apply_alpha()
 """""""""""""
