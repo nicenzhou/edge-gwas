@@ -129,7 +129,7 @@ where α is estimated from data:
 - **α ≈ 0**: Recessive effect (only homozygotes affected)
 - **α ≈ 0.5**: Additive effect (heterozygotes intermediate)
 - **α ≈ 1**: Dominant effect (heterozygotes ≈ homozygotes)
-- **α < 0 or α > 1**: Over-dominance/under-dominance
+- **α < 0 or α > 1**: Under-recessive/Over-dominance
 
 ### Population Structure Control
 
