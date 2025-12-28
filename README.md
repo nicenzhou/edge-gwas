@@ -93,7 +93,7 @@ For a comprehensive example covering all features including:
 - PCA with LD pruning for population structure control
 - Advanced visualization and multiple output formats
 
-**See the full detailed workflow in the documentation:** [Complete Workflows Guide](https://edge-gwas.readthedocs.io/en/latest/workflows.html)
+**See the full detailed workflow in the documentation:** [Complete Workflows Guide](https://edge-gwas.readthedocs.io/en/latest/quickstart.html#complete-workflow-example)
 
 ---
 
