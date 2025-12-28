@@ -130,9 +130,10 @@ Calculate encoding parameters from training data.
        outcome,
        covariates,
        variant_info=None,
-       grm_matrix=None,        # NEW in v0.1.1
-       grm_sample_ids=None,    # NEW in v0.1.1
-       mean_centered=False     # NEW in v0.1.1
+       grm_matrix=None,
+       grm_sample_ids=None,
+       mean_centered=False,
+       use_fast_approximation=True
    )
 
 **Parameters:**
@@ -141,14 +142,18 @@ Calculate encoding parameters from training data.
 * ``phenotype_df`` (pandas.DataFrame): Phenotype data with outcome and covariates
 * ``outcome`` (str): Name of outcome column
 * ``covariates`` (list): List of covariate column names
-* ``variant_info`` (pandas.DataFrame, optional): Variant information (variant_id, chr, pos, ref_allele, alt_allele)
-* ``grm_matrix`` (numpy.ndarray, optional): **NEW in v0.1.1** - GRM matrix for population structure control
-* ``grm_sample_ids`` (pandas.DataFrame, optional): **NEW in v0.1.1** - Sample IDs corresponding to GRM
-* ``mean_centered`` (bool, optional): **NEW in v0.1.1** - If True, fit codominant regression without intercept (default: False)
+* ``variant_info`` (pandas.DataFrame, optional): Variant info (index=variant_id; columns: chrom, pos, ref_allele, alt_allele, MAF)
+* ``grm_matrix`` (numpy.ndarray, optional): GRM matrix for population structure control
+* ``grm_sample_ids`` (pandas.DataFrame, optional): Sample IDs (columns: FID, IID, sample_id)
+* ``mean_centered`` (bool, optional): If True, fit without intercept (default: False)
+* ``use_fast_approximation`` (bool, optional): Use fast approximation for GRM-based binary models (default: True)
 
 **Returns:**
 
-* ``pandas.DataFrame``: Alpha values with columns: variant_id, alpha_value, ref_allele, alt_allele, eaf, coef_het, coef_hom, std_err_het, std_err_hom, pval_het, pval_hom, n_samples
+* ``pandas.DataFrame``: Alpha values with columns:
+
+  * Binary outcomes: chrom, pos, variant_id, alpha_value, ref_allele, alt_allele, eaf, coef_het, coef_hom, std_err_het, std_err_hom, conf_int_low_het, conf_int_high_het, conf_int_low_hom, conf_int_high_hom, pval_het, pval_hom, n_samples, n_cases, n_controls, convergence_status
+  * Continuous outcomes: same without n_cases, n_controls
 
 **Examples:**
 
@@ -156,8 +161,7 @@ Calculate encoding parameters from training data.
 
    # Basic usage
    alpha_df = edge.calculate_alpha(
-       genotype_data=train_geno,
-       phenotype_df=train_pheno,
+       train_geno, train_pheno,
        outcome='trait',
        covariates=['age', 'sex']
    )
@@ -167,28 +171,12 @@ Calculate encoding parameters from training data.
    grm_matrix, grm_ids = load_grm_gcta('grm_prefix')
    
    alpha_df = edge.calculate_alpha(
-       genotype_data=train_geno,
-       phenotype_df=train_pheno,
+       train_geno, train_pheno,
        outcome='trait',
-       covariates=['age', 'sex'],
+       covariates=['age', 'sex', 'PC1', 'PC2'],
        grm_matrix=grm_matrix,
        grm_sample_ids=grm_ids
    )
-   
-   # Mean-centered model (Y - E[Y], no intercept)
-   alpha_df = edge.calculate_alpha(
-       genotype_data=train_geno,
-       phenotype_df=train_pheno,
-       outcome='trait',
-       covariates=['age', 'sex'],
-       mean_centered=True
-   )
-
-**Notes:**
-
-* Model: ``Y ~ β_het × I(geno=1) + β_hom × I(geno=2) + covariates``
-* Alpha: ``α = β_het / β_hom``
-* When ``mean_centered=True``: no intercept term in the regression model
 
 apply_alpha()
 """""""""""""
@@ -203,8 +191,10 @@ Apply alpha values to test data for GWAS.
        outcome,
        covariates,
        alpha_values,
-       grm_matrix=None,        # NEW in v0.1.1
-       grm_sample_ids=None     # NEW in v0.1.1
+       grm_matrix=None,
+       grm_sample_ids=None,
+       variant_info=None,
+       use_fast_approximation=True
    )
 
 **Parameters:**
@@ -213,22 +203,18 @@ Apply alpha values to test data for GWAS.
 * ``phenotype_df`` (pandas.DataFrame): Test phenotype data
 * ``outcome`` (str): Name of outcome column
 * ``covariates`` (list): List of covariate column names
-* ``alpha_values`` (pandas.DataFrame): Alpha values from training
-* ``grm_matrix`` (numpy.ndarray, optional): **NEW in v0.1.1** - GRM matrix for mixed model
-* ``grm_sample_ids`` (pandas.DataFrame, optional): **NEW in v0.1.1** - Sample IDs for GRM
+* ``alpha_values`` (pandas.DataFrame): Alpha values from calculate_alpha()
+* ``grm_matrix`` (numpy.ndarray, optional): GRM matrix for mixed model
+* ``grm_sample_ids`` (pandas.DataFrame, optional): Sample IDs (columns: FID, IID, sample_id)
+* ``variant_info`` (pandas.DataFrame, optional): Variant info (index=variant_id; columns: chrom, pos, ref_allele, alt_allele)
+* ``use_fast_approximation`` (bool, optional): Use fast approximation for GRM-based binary models (default: True)
 
 **Returns:**
 
 * ``pandas.DataFrame``: GWAS results with columns:
 
-  * ``variant_id``: SNP identifier
-  * ``chr``: Chromosome
-  * ``pos``: Position
-  * ``pval``: P-value
-  * ``coef``: Effect coefficient
-  * ``std_err``: Standard error
-  * ``stat``: Test statistic
-  * ``alpha_value``: Applied alpha
+  * Binary outcomes: chrom, pos, variant_id, ref_allele, alt_allele, alpha_value, coef, std_err, stat, pval, conf_int_low, conf_int_high, n_samples, n_cases, n_controls, maf, eaf
+  * Continuous outcomes: same without n_cases, n_controls
 
 run_full_analysis()
 """""""""""""""""""
@@ -245,9 +231,10 @@ Complete two-stage EDGE analysis.
        outcome,
        covariates,
        variant_info=None,
-       grm_matrix=None,        # NEW in v0.1.1
-       grm_sample_ids=None,    # NEW in v0.1.1
-       mean_centered=False,    # NEW in v0.1.1
+       grm_matrix=None,
+       grm_sample_ids=None,
+       mean_centered=False,
+       use_fast_approximation=True,
        output_prefix=None
    )
 
@@ -257,10 +244,11 @@ Complete two-stage EDGE analysis.
 * ``train_phenotype/test_phenotype`` (pandas.DataFrame): Training/test phenotype data
 * ``outcome`` (str): Outcome column name
 * ``covariates`` (list): Covariate column names
-* ``variant_info`` (pandas.DataFrame, optional): Variant information
-* ``grm_matrix`` (numpy.ndarray, optional): **NEW in v0.1.1** - GRM for population structure control
-* ``grm_sample_ids`` (pandas.DataFrame, optional): **NEW in v0.1.1** - Sample IDs for GRM
-* ``mean_centered`` (bool, optional): **NEW in v0.1.1** - If True, fit codominant regression without intercept (default: False)
+* ``variant_info`` (pandas.DataFrame, optional): Variant info (index=variant_id; columns: chrom, pos, ref_allele, alt_allele, MAF)
+* ``grm_matrix`` (numpy.ndarray, optional): GRM for population structure control
+* ``grm_sample_ids`` (pandas.DataFrame, optional): Sample IDs (columns: FID, IID, sample_id)
+* ``mean_centered`` (bool, optional): If True, fit without intercept (default: False)
+* ``use_fast_approximation`` (bool, optional): Use fast approximation for GRM-based binary models (default: True)
 * ``output_prefix`` (str, optional): Prefix for output files
 
 **Returns:**
@@ -275,23 +263,24 @@ Complete two-stage EDGE analysis.
    alpha_df, gwas_df = edge.run_full_analysis(
        train_geno, train_pheno,
        test_geno, test_pheno,
-       outcome='trait',
+       outcome='disease',
        covariates=['age', 'sex'],
        output_prefix='results/edge'
    )
    
-   # With GRM and mean-centered model
+   # With GRM and variant info
    from edge_gwas.utils import load_grm_gcta
    grm_matrix, grm_ids = load_grm_gcta('grm_prefix')
    
    alpha_df, gwas_df = edge.run_full_analysis(
        train_geno, train_pheno,
        test_geno, test_pheno,
-       outcome='trait',
-       covariates=['age', 'sex'],
+       outcome='disease',
+       covariates=['age', 'sex', 'PC1', 'PC2'],
+       variant_info=variant_info,
        grm_matrix=grm_matrix,
        grm_sample_ids=grm_ids,
-       mean_centered=True,
+       use_fast_approximation=True,
        output_prefix='results/edge'
    )
 
