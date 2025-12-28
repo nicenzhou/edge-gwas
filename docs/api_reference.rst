@@ -1398,27 +1398,8 @@ Calculate genomic inflation factor (λ).
 
 * ``float``: Genomic inflation factor (λ)
 
-merge_alpha_with_gwas()
-"""""""""""""""""""""""
 
-Merge GWAS results with alpha values.
-
-.. code-block:: python
-
-   from edge_gwas.utils import merge_alpha_with_gwas
-   
-   merged_df = merge_alpha_with_gwas(gwas_df, alpha_df)
-
-**Parameters:**
-
-* ``gwas_df`` (pandas.DataFrame): GWAS results
-* ``alpha_df`` (pandas.DataFrame): Alpha values
-
-**Returns:**
-
-* ``pandas.DataFrame``: Merged results with both GWAS and alpha information
-
-additive_gwas()
+standard_gwas() / additive_gwas()
 """""""""""""""
 
 **NEW in v0.1.1** - Perform standard additive GWAS for comparison with EDGE.
