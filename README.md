@@ -118,19 +118,12 @@ Apply learned encoding and test association:
 $$E(Y | G, COV) = \beta_0 + \beta_{EDGE} \cdot G_{EDGE} + \sum_{i} \beta_{cov_i} \cdot COV_i$$
 
 where:
-``G_{EDGE} = \begin{cases} 
+
+$$G_{EDGE} = \begin{cases} 
 0 & \text{if } G = 0 \text{ (REF/REF)} \\
 \alpha & \text{if } G = 1 \text{ (REF/ALT)} \\
 1 & \text{if } G = 2 \text{ (ALT/ALT)}
-\end{cases}``
-
-### Interpretation
-
-**Standard additive model assumes:**  
-Genotypes: 0 → 0, 1 → 1, 2 → 2
-
-**EDGE learns optimal encoding:**  
-Genotypes: 0 → 0, 1 → α, 2 → 1
+\end{cases}$$
 
 where α is estimated from data:
 - **α ≈ 0**: Recessive effect (only homozygotes affected)
