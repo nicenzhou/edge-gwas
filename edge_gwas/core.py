@@ -516,28 +516,35 @@ class EDGEAnalysis:
                         y.values, X.values, aligned_grm
                     )
                     
-                    # Create a result-like object with proper indexing
-                    class MixedModelResult:
-                        def __init__(self, res_dict, feature_names, het_idx, hom_idx):
-                            self.feature_names = feature_names
-                            self.het_idx = het_idx
-                            self.hom_idx = hom_idx
-                            self.params = pd.Series(res_dict['params'], index=feature_names)
-                            self.bse = pd.Series(res_dict['bse'], index=feature_names)
-                            self.tvalues = pd.Series(res_dict['tvalues'], index=feature_names)
-                            self.pvalues = pd.Series(res_dict['pvalues'], index=feature_names)
-                            self._conf_int = pd.DataFrame({
-                                0: res_dict['conf_int_lower'],
-                                1: res_dict['conf_int_upper']
-                            }, index=feature_names)
-                        
-                        def conf_int(self):
-                            return self._conf_int
+                    # Extract results directly from dict using indices
+                    result_data = {
+                        'snp': [snp_name],
+                        'coef_het': [result_dict['params'][het_idx]],
+                        'coef_hom': [result_dict['params'][hom_idx]],
+                        'std_err_het': [result_dict['bse'][het_idx]],
+                        'std_err_hom': [result_dict['bse'][hom_idx]],
+                        'stat_het': [result_dict['tvalues'][het_idx]],
+                        'stat_hom': [result_dict['tvalues'][hom_idx]],
+                        'pval_het': [result_dict['pvalues'][het_idx]],
+                        'pval_hom': [result_dict['pvalues'][hom_idx]],
+                        'conf_int_low_het': [result_dict['conf_int_lower'][het_idx]],
+                        'conf_int_high_het': [result_dict['conf_int_upper'][het_idx]],
+                        'conf_int_low_hom': [result_dict['conf_int_lower'][hom_idx]],
+                        'conf_int_high_hom': [result_dict['conf_int_upper'][hom_idx]],
+                        'n_samples': [len(y)]
+                    }
                     
-                    result = MixedModelResult(result_dict, feature_names, het_idx, hom_idx)
+                    # Add n_cases and n_controls for binary outcomes
+                    if self.outcome_type == 'binary':
+                        result_data['n_cases'] = [n_cases]
+                        result_data['n_controls'] = [n_controls]
+                    
+                    return pd.DataFrame(result_data)
                     
                 except Exception as e:
                     logger.warning(f"GRM-based logistic model fitting failed for {snp_name}: {str(e)}")
+                    import traceback
+                    logger.warning(f"Traceback: {traceback.format_exc()}")
                     self.skipped_snps.append(snp_name)
                     return pd.DataFrame()
         else:
