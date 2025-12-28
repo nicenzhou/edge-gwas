@@ -21,7 +21,7 @@ def manhattan_plot(
     Create Manhattan plot from EDGE GWAS results.
     
     Args:
-        gwas_df: DataFrame or list of DataFrames with columns 'chr', 'pval'
+        gwas_df: DataFrame or list of DataFrames with columns 'chrom', 'pos', 'pval'
         output: Output filename for the plot
         title: Plot title
         sig_threshold: Genome-wide significance threshold (default: 5e-8)
@@ -37,6 +37,13 @@ def manhattan_plot(
     else:
         gwas_df = gwas_df.copy()
     
+    # Check for required columns
+    if 'chrom' not in gwas_df.columns or 'pval' not in gwas_df.columns:
+        raise ValueError("gwas_df must contain 'chrom' and 'pval' columns")
+    
+    # Remove rows with missing values
+    gwas_df = gwas_df.dropna(subset=['chrom', 'pval'])
+    
     # Calculate -log10(p)
     gwas_df['-log10p'] = -np.log10(gwas_df['pval'])
     
@@ -50,13 +57,26 @@ def manhattan_plot(
     x_labels = []
     x_labels_pos = []
     
-    for chrom in sorted(gwas_df['chr'].unique()):
-        data = gwas_df[gwas_df['chr'] == chrom].sort_values('pos') if 'pos' in gwas_df.columns else gwas_df[gwas_df['chr'] == chrom]
+    # Sort chromosomes
+    unique_chroms = sorted(gwas_df['chrom'].unique(), key=lambda x: (int(x) if str(x).isdigit() else float('inf'), str(x)))
+    
+    for chrom in unique_chroms:
+        data = gwas_df[gwas_df['chrom'] == chrom]
+        
+        # Sort by position if available
+        if 'pos' in gwas_df.columns:
+            data = data.sort_values('pos')
+        
+        # Determine color index
+        if str(chrom).isdigit():
+            color_idx = int(chrom) % 2
+        else:
+            color_idx = 0
         
         ax.scatter(
             x_pos + np.arange(len(data)), 
             data['-log10p'], 
-            c=colors[int(chrom) % 2], 
+            c=colors[color_idx], 
             s=2, 
             alpha=0.7
         )
