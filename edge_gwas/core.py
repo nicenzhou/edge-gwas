@@ -1062,76 +1062,76 @@ class EDGEAnalysis:
         return gwas_df
 
 
-def _parse_variant_id(
-    self,
-    variant_id: str,
-    pattern: str
-) -> Tuple[str, int, str, str]:
-    """
-    Parse variant ID to extract chromosome, position, ref, and alt alleles.
-    
-    Args:
-        variant_id: Variant identifier string
-        pattern: Pattern describing the variant_id format
+    def _parse_variant_id(
+        self,
+        variant_id: str,
+        pattern: str
+    ) -> Tuple[str, int, str, str]:
+        """
+        Parse variant ID to extract chromosome, position, ref, and alt alleles.
         
-    Returns:
-        Tuple of (chr, pos, ref_allele, alt_allele)
+        Args:
+            variant_id: Variant identifier string
+            pattern: Pattern describing the variant_id format
+            
+        Returns:
+            Tuple of (chr, pos, ref_allele, alt_allele)
+            
+        Raises:
+            ValueError: If variant_id cannot be parsed with the given pattern
+        """
+        parts = None
+        chr_val = None
+        pos = None
+        ref_allele = None
+        alt_allele = None
         
-    Raises:
-        ValueError: If variant_id cannot be parsed with the given pattern
-    """
-    parts = None
-    chr_val = None
-    pos = None
-    ref_allele = None
-    alt_allele = None
-    
-    if pattern == 'chr:pos':
-        # Format: 1:12345
-        parts = variant_id.split(':')
-        if len(parts) >= 2:
-            chr_val = parts[0]
-            pos = int(parts[1])
-            ref_allele = None
-            alt_allele = None
-    
-    elif pattern == 'chr:pos:ref:alt':
-        # Format: 1:12345:A:T
-        parts = variant_id.split(':')
-        if len(parts) >= 4:
-            chr_val = parts[0]
-            pos = int(parts[1])
-            ref_allele = parts[2]
-            alt_allele = parts[3]
-    
-    elif pattern == 'chr:pos_ref_alt':
-        # Format: 1:12345_A_T
-        if ':' in variant_id and '_' in variant_id:
-            chr_pos, alleles = variant_id.split(':', 1)
-            chr_val = chr_pos
-            if '_' in alleles:
-                parts = alleles.split('_')
-                if len(parts) >= 3:
-                    pos = int(parts[0])
-                    ref_allele = parts[1]
-                    alt_allele = parts[2]
-    
-    elif pattern == 'chr_pos_ref_alt':
-        # Format: 1_12345_A_T
-        parts = variant_id.split('_')
-        if len(parts) >= 4:
-            chr_val = parts[0]
-            pos = int(parts[1])
-            ref_allele = parts[2]
-            alt_allele = parts[3]
-    
-    else:
-        raise ValueError(f"Unknown variant_id pattern: {pattern}")
-    
-    if chr_val is None or pos is None:
-        raise ValueError(f"Could not parse variant_id '{variant_id}' with pattern '{pattern}'")
-    
-    return chr_val, pos, ref_allele, alt_allele
+        if pattern == 'chr:pos':
+            # Format: 1:12345
+            parts = variant_id.split(':')
+            if len(parts) >= 2:
+                chr_val = parts[0]
+                pos = int(parts[1])
+                ref_allele = None
+                alt_allele = None
+        
+        elif pattern == 'chr:pos:ref:alt':
+            # Format: 1:12345:A:T
+            parts = variant_id.split(':')
+            if len(parts) >= 4:
+                chr_val = parts[0]
+                pos = int(parts[1])
+                ref_allele = parts[2]
+                alt_allele = parts[3]
+        
+        elif pattern == 'chr:pos_ref_alt':
+            # Format: 1:12345_A_T
+            if ':' in variant_id and '_' in variant_id:
+                chr_pos, alleles = variant_id.split(':', 1)
+                chr_val = chr_pos
+                if '_' in alleles:
+                    parts = alleles.split('_')
+                    if len(parts) >= 3:
+                        pos = int(parts[0])
+                        ref_allele = parts[1]
+                        alt_allele = parts[2]
+        
+        elif pattern == 'chr_pos_ref_alt':
+            # Format: 1_12345_A_T
+            parts = variant_id.split('_')
+            if len(parts) >= 4:
+                chr_val = parts[0]
+                pos = int(parts[1])
+                ref_allele = parts[2]
+                alt_allele = parts[3]
+        
+        else:
+            raise ValueError(f"Unknown variant_id pattern: {pattern}")
+        
+        if chr_val is None or pos is None:
+            raise ValueError(f"Could not parse variant_id '{variant_id}' with pattern '{pattern}'")
+        
+        return chr_val, pos, ref_allele, alt_allele
     
     def run_full_analysis(
         self,
