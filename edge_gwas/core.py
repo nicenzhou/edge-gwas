@@ -848,7 +848,7 @@ class EDGEAnalysis:
             grm_matrix: Optional GRM matrix from GCTA (for population structure control)
             grm_sample_ids: DataFrame with FID and IID corresponding to GRM rows
             variant_info: Optional DataFrame with variant information
-                         (columns: variant_id, ref_allele, alt_allele, chrom, pos)
+                         (columns: variant_id, ref_allele, alt_allele, chr, pos)
             split_variant_id: If True, parse variant_id to extract chr, pos, ref, alt
             variant_id_pattern: Pattern for splitting variant_id. Options:
                                - 'chr:pos' (e.g., '1:12345')
@@ -859,7 +859,7 @@ class EDGEAnalysis:
         Returns:
             DataFrame with GWAS results including LocusZoom-required columns:
             - MarkerName (variant_id)
-            - CHR (chrom)
+            - CHR (chr)
             - POS (pos)
             - Allele1 (ref_allele)
             - Allele2 (alt_allele)
@@ -947,15 +947,15 @@ class EDGEAnalysis:
                 maf = np.nan
             
             # Parse variant info
-            chrom = None
+            chr_val = None
             pos = None
             ref_allele = None
             alt_allele = None
             
             # Try to get from variant_info first
             if variant_info is not None and variant_id in variant_info.index:
-                if 'chrom' in variant_info.columns:
-                    chrom = variant_info.loc[variant_id, 'chrom']
+                if 'chr' in variant_info.columns:
+                    chr_val = variant_info.loc[variant_id, 'chr']
                 if 'pos' in variant_info.columns:
                     pos = variant_info.loc[variant_id, 'pos']
                 if 'ref_allele' in variant_info.columns:
@@ -966,8 +966,8 @@ class EDGEAnalysis:
             # Try to get from alpha_values if not in variant_info
             if variant_id in alpha_values['variant_id'].values:
                 alpha_row = alpha_values[alpha_values['variant_id'] == variant_id].iloc[0]
-                if chrom is None and 'chrom' in alpha_values.columns:
-                    chrom = alpha_row['chrom']
+                if chr_val is None and 'chr' in alpha_values.columns:
+                    chr_val = alpha_row['chr']
                 if pos is None and 'pos' in alpha_values.columns:
                     pos = alpha_row['pos']
                 if ref_allele is None and 'ref_allele' in alpha_values.columns:
@@ -978,12 +978,12 @@ class EDGEAnalysis:
             # If split_variant_id is True, parse variant_id
             if split_variant_id:
                 try:
-                    chrom_parsed, pos_parsed, ref_parsed, alt_parsed = self._parse_variant_id(
+                    chr_parsed, pos_parsed, ref_parsed, alt_parsed = self._parse_variant_id(
                         variant_id, variant_id_pattern
                     )
                     # Use parsed values if not already available
-                    if chrom is None:
-                        chrom = chrom_parsed
+                    if chr_val is None:
+                        chr_val = chr_parsed
                     if pos is None:
                         pos = pos_parsed
                     if ref_allele is None:
@@ -994,8 +994,8 @@ class EDGEAnalysis:
                     logger.warning(f"Could not parse variant_id '{variant_id}': {str(e)}")
             
             # Set defaults if still None
-            if chrom is None:
-                chrom = 'NA'
+            if chr_val is None:
+                chr_val = 'NA'
             if pos is None:
                 pos = 0
             if ref_allele is None:
@@ -1019,7 +1019,7 @@ class EDGEAnalysis:
                 
                 # LocusZoom-required columns (standard names)
                 'MarkerName': variant_id,
-                'CHR': str(chrom),
+                'CHR': str(chr_val),
                 'POS': int(pos) if pos != 0 else 0,
                 'Allele1': ref_allele,
                 'Allele2': alt_allele,
@@ -1030,7 +1030,7 @@ class EDGEAnalysis:
                 'EAF': eaf,
                 
                 # Additional info columns
-                'chrom': chrom,
+                'chr': chr_val,
                 'pos': pos,
                 'ref_allele': ref_allele,
                 'alt_allele': alt_allele,
@@ -1060,78 +1060,78 @@ class EDGEAnalysis:
                     logger.info(f"MAF range: {valid_maf.min():.4f} - {valid_maf.max():.4f}")
         
         return gwas_df
+
+
+def _parse_variant_id(
+    self,
+    variant_id: str,
+    pattern: str
+) -> Tuple[str, int, str, str]:
+    """
+    Parse variant ID to extract chromosome, position, ref, and alt alleles.
     
+    Args:
+        variant_id: Variant identifier string
+        pattern: Pattern describing the variant_id format
+        
+    Returns:
+        Tuple of (chr, pos, ref_allele, alt_allele)
+        
+    Raises:
+        ValueError: If variant_id cannot be parsed with the given pattern
+    """
+    parts = None
+    chr_val = None
+    pos = None
+    ref_allele = None
+    alt_allele = None
     
-    def _parse_variant_id(
-        self,
-        variant_id: str,
-        pattern: str
-    ) -> Tuple[str, int, str, str]:
-        """
-        Parse variant ID to extract chromosome, position, ref, and alt alleles.
-        
-        Args:
-            variant_id: Variant identifier string
-            pattern: Pattern describing the variant_id format
-            
-        Returns:
-            Tuple of (chrom, pos, ref_allele, alt_allele)
-            
-        Raises:
-            ValueError: If variant_id cannot be parsed with the given pattern
-        """
-        parts = None
-        chrom = None
-        pos = None
-        ref_allele = None
-        alt_allele = None
-        
-        if pattern == 'chr:pos':
-            # Format: 1:12345
-            parts = variant_id.split(':')
-            if len(parts) >= 2:
-                chrom = parts[0]
-                pos = int(parts[1])
-                ref_allele = None
-                alt_allele = None
-        
-        elif pattern == 'chr:pos:ref:alt':
-            # Format: 1:12345:A:T
-            parts = variant_id.split(':')
-            if len(parts) >= 4:
-                chrom = parts[0]
-                pos = int(parts[1])
-                ref_allele = parts[2]
-                alt_allele = parts[3]
-        
-        elif pattern == 'chr:pos_ref_alt':
-            # Format: 1:12345_A_T
-            if ':' in variant_id and '_' in variant_id:
-                chr_pos, alleles = variant_id.split(':', 1)
-                chrom = chr_pos
-                if '_' in alleles:
-                    parts = alleles.split('_')
-                    if len(parts) >= 3:
-                        pos = int(parts[0])
-                        ref_allele = parts[1]
-                        alt_allele = parts[2]
-        
-        elif pattern == 'chr_pos_ref_alt':
-            # Format: 1_12345_A_T
-            parts = variant_id.split('_')
-            if len(parts) >= 4:
-                chrom = parts[0]
-                pos = int(parts[1])
-                ref_allele = parts[2]
-                alt_allele = parts[3]
-        
-        else:
-            raise ValueError(f"Unknown variant_id pattern: {pattern}")
-        
-        if chrom is None or pos is None:
-            raise ValueError(f"Could not parse variant_id '{variant_id}' with pattern '{pattern}'")
-        
-        return chrom, pos, ref_allele, alt_allele
+    if pattern == 'chr:pos':
+        # Format: 1:12345
+        parts = variant_id.split(':')
+        if len(parts) >= 2:
+            chr_val = parts[0]
+            pos = int(parts[1])
+            ref_allele = None
+            alt_allele = None
+    
+    elif pattern == 'chr:pos:ref:alt':
+        # Format: 1:12345:A:T
+        parts = variant_id.split(':')
+        if len(parts) >= 4:
+            chr_val = parts[0]
+            pos = int(parts[1])
+            ref_allele = parts[2]
+            alt_allele = parts[3]
+    
+    elif pattern == 'chr:pos_ref_alt':
+        # Format: 1:12345_A_T
+        if ':' in variant_id and '_' in variant_id:
+            chr_pos, alleles = variant_id.split(':', 1)
+            chr_val = chr_pos
+            if '_' in alleles:
+                parts = alleles.split('_')
+                if len(parts) >= 3:
+                    pos = int(parts[0])
+                    ref_allele = parts[1]
+                    alt_allele = parts[2]
+    
+    elif pattern == 'chr_pos_ref_alt':
+        # Format: 1_12345_A_T
+        parts = variant_id.split('_')
+        if len(parts) >= 4:
+            chr_val = parts[0]
+            pos = int(parts[1])
+            ref_allele = parts[2]
+            alt_allele = parts[3]
+    
+    else:
+        raise ValueError(f"Unknown variant_id pattern: {pattern}")
+    
+    if chr_val is None or pos is None:
+        raise ValueError(f"Could not parse variant_id '{variant_id}' with pattern '{pattern}'")
+    
+    return chr_val, pos, ref_allele, alt_allele
     
     def run_full_analysis(
         self,
