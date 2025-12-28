@@ -101,35 +101,42 @@ For a comprehensive example covering all features including:
 
 ### Two-Stage Approach
 
-**Stage 1: Estimate α (Training Set)**
+**Stage 1: Calculate α (Alpha Calculation Set)**
 
-Fit codominant model to estimate separate effects:
+Fit codominant model to estimate separate effects for heterozygous and homozygous alternate genotypes:
 
-$$E(Y | G, COV) = \beta_0 + \beta_{Het} \cdot I_{Het} + \beta_{HA} \cdot I_{HA} + \sum_{i} \beta_{cov_i} \cdot COV_i$$
+$$E(Y | G, COV) = \beta_0 + \beta_{Het} \cdot I_{Het} + \beta_{Hom} \cdot I_{Hom} + \sum_{i} \beta_{cov_i} \cdot COV_i$$
+
+where:
+- $I_{Het}$ = 1 if genotype is REF/ALT (heterozygous), 0 otherwise
+- $I_{Hom}$ = 1 if genotype is ALT/ALT (homozygous alternate), 0 otherwise
+- REF = major allele (reference)
+- ALT = minor allele (effect/risk allele)
 
 Calculate encoding parameter:
 
-$$\alpha = \frac{\beta_{Het}}{\beta_{HA}}$$
+$$\alpha = \frac{\beta_{Het}}{\beta_{Hom}}$$
 
-**Stage 2: GWAS (Test Set)**
+**Stage 2: Apply α (Alpha Applying Set)**
 
-Apply learned encoding and test association:
+Apply learned encoding and test association using EDGE-encoded genotypes:
 
 $$E(Y | G, COV) = \beta_0 + \beta_{EDGE} \cdot G_{EDGE} + \sum_{i} \beta_{cov_i} \cdot COV_i$$
 
-where:
+where $G_{EDGE}$ is the EDGE-encoded genotype:
 
 $$G_{EDGE} = \begin{cases} 
-0 & \text{if } G = 0 \text{ (REF/REF)} \\
-\alpha & \text{if } G = α \text{ (REF/ALT)} \\
-1 & \text{if } G = 1 \text{ (ALT/ALT)}
+0 & \text{if } G = 0 \text{ (REF/REF - major/major)} \\
+\alpha & \text{if } G = 1 \text{ (REF/ALT - major/minor)} \\
+1 & \text{if } G = 2 \text{ (ALT/ALT - minor/minor)}
 \end{cases}$$
 
-where α is estimated from data:
-- **α ≈ 0**: Recessive effect (only homozygotes affected)
-- **α ≈ 0.5**: Additive effect (heterozygotes intermediate)
-- **α ≈ 1**: Dominant effect (heterozygotes ≈ homozygotes)
-- **α < 0 or α > 1**: Under-recessive/Over-dominance
+**Interpretation of α** (assuming ALT is the minor/risk allele):
+- **α ≈ 0**: Recessive effect 
+- **α ≈ 0.5**: Additive effect 
+- **α ≈ 1**: Dominant effect 
+- **α < 0**: Under-recessive 
+- **α > 1**: Over-dominant 
 
 ### Population Structure Control
 
