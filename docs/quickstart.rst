@@ -216,49 +216,49 @@ Option A: Calculate PCA (for unrelated samples):
 
 .. code-block:: python
 
-pca_df = calculate_pca_plink(
-plink_prefix='path/to/data',
-n_pcs=10,
-maf_threshold=0.01,
-ld_r2=0.2,
-verbose=True
-)
-
-phenotype_df = attach_pcs_to_phenotype(
-phenotype_df, pca_df, n_pcs=10, verbose=True
-)
+   pca_df = calculate_pca_plink(
+       plink_prefix='path/to/data',
+       n_pcs=10,
+       maf_threshold=0.01,
+       ld_r2=0.2,
+       verbose=True
+   )
+   
+   phenotype_df = attach_pcs_to_phenotype(
+       phenotype_df, pca_df, n_pcs=10, verbose=True
+   )
 
 Option B: Calculate PC-AiR (for related samples):
 
 .. code-block:: python
 
-from edge_gwas.utils import calculate_pca_pcair
-
-pca_df = calculate_pca_pcair(
-plink_prefix='path/to/data',
-n_pcs=10,
-kin_threshold=0.0884,
-verbose=True
-)
-
-phenotype_df = attach_pcs_to_phenotype(
-phenotype_df, pca_df, n_pcs=10
-)
+   from edge_gwas.utils import calculate_pca_pcair
+   
+   pca_df = calculate_pca_pcair(
+       plink_prefix='path/to/data',
+       n_pcs=10,
+       kin_threshold=0.0884,
+       verbose=True
+   )
+   
+   phenotype_df = attach_pcs_to_phenotype(
+       phenotype_df, pca_df, n_pcs=10
+   )
 
 Option C: Use GRM for mixed model (for related samples):
 
 .. code-block:: python
 
-from edge_gwas.utils import calculate_grm_gcta, load_grm_gcta
-
-grm_prefix = calculate_grm_gcta(
-plink_prefix='path/to/data',
-output_prefix='output/grm',
-maf_threshold=0.01,
-verbose=True
-)
-
-grm_matrix, grm_ids = load_grm_gcta('output/grm', verbose=True)
+   from edge_gwas.utils import calculate_grm_gcta, load_grm_gcta
+   
+   grm_prefix = calculate_grm_gcta(
+       plink_prefix='path/to/data',
+       output_prefix='output/grm',
+       maf_threshold=0.01,
+       verbose=True
+   )
+   
+   grm_matrix, grm_ids = load_grm_gcta('output/grm', verbose=True)
 
 
 6. Initialize EDGE Analysis
