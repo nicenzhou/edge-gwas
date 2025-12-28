@@ -85,18 +85,6 @@ Troubleshooting
    
    grm_prefix = calculate_grm_gcta('genotypes', method='grm-sparse')
 
-
-Next Steps
-----------
-
-After successful installation:
-
-1. **Verify installation**: Run ``edge-gwas-check-tools``
-2. **Quick start**: Try the :ref:`quickstart` tutorial
-3. **Learn the basics**: Read the :ref:`user_guide`
-4. **Explore examples**: See :ref:`examples` for complete workflows
-5. **API reference**: Check :ref:`api_reference` for detailed documentation
-
 See Also
 --------
 
