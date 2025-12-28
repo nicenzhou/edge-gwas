@@ -144,7 +144,7 @@ Calculate encoding parameters from training data.
 * ``variant_info`` (pandas.DataFrame, optional): Variant information (variant_id, chr, pos, ref_allele, alt_allele)
 * ``grm_matrix`` (numpy.ndarray, optional): **NEW in v0.1.1** - GRM matrix for population structure control
 * ``grm_sample_ids`` (pandas.DataFrame, optional): **NEW in v0.1.1** - Sample IDs corresponding to GRM
-* ``mean_centered`` (bool, optional): **NEW in v0.1.1** - Use mean-centered model without intercept (default: False)
+* ``mean_centered`` (bool, optional): **NEW in v0.1.1** - If True, fit codominant regression without intercept (default: False)
 
 **Returns:**
 
@@ -188,7 +188,7 @@ Calculate encoding parameters from training data.
 
 * Model: ``Y ~ β_het × I(geno=1) + β_hom × I(geno=2) + covariates``
 * Alpha: ``α = β_het / β_hom``
-* When ``mean_centered=True``: outcome and predictors are centered, no intercept
+* When ``mean_centered=True``: no intercept term in the regression model
 
 apply_alpha()
 """""""""""""
@@ -260,7 +260,7 @@ Complete two-stage EDGE analysis.
 * ``variant_info`` (pandas.DataFrame, optional): Variant information
 * ``grm_matrix`` (numpy.ndarray, optional): **NEW in v0.1.1** - GRM for population structure control
 * ``grm_sample_ids`` (pandas.DataFrame, optional): **NEW in v0.1.1** - Sample IDs for GRM
-* ``mean_centered`` (bool, optional): **NEW in v0.1.1** - Use mean-centered model (default: False)
+* ``mean_centered`` (bool, optional): **NEW in v0.1.1** - If True, fit codominant regression without intercept (default: False)
 * ``output_prefix`` (str, optional): Prefix for output files
 
 **Returns:**
