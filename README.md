@@ -105,17 +105,17 @@ For a comprehensive example covering all features including:
 
 Fit codominant model to estimate separate effects for heterozygous and homozygous alternate genotypes:
 
-$$E(Y | G, COV) = \beta_0 + \beta_{Het} \cdot I_{Het} + \beta_{Hom} \cdot I_{Hom} + \sum_{i} \beta_{cov_i} \cdot COV_i$$
+$$E(Y | G, COV) = \beta_0 + \beta_{Het} \cdot I_{Het} + \beta_{HA} \cdot I_{HA} + \sum_{i} \beta_{cov_i} \cdot COV_i$$
 
 where:
 - $I_{Het}$ = 1 if genotype is REF/ALT (heterozygous), 0 otherwise
-- $I_{Hom}$ = 1 if genotype is ALT/ALT (homozygous alternate), 0 otherwise
+- $I_{HA}$ = 1 if genotype is ALT/ALT (homozygous alternate), 0 otherwise
 - REF = major allele (reference)
 - ALT = minor allele (effect/risk allele)
 
 Calculate encoding parameter:
 
-$$\alpha = \frac{\beta_{Het}}{\beta_{Hom}}$$
+$$\alpha = \frac{\beta_{Het}}{\beta_{HA}}$$
 
 **Stage 2: Apply α (Alpha Applying Set)**
 
