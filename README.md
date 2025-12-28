@@ -1,6 +1,6 @@
 ![Logo](docs/images/EDGE_RG.jpg)
 
-# edge-gwas: Flexible Genetic Encoding for GWAS
+# edge-gwas: A Python Package for Flexible Genetic Encoding in GWAS
 
 [![Version](https://img.shields.io/badge/version-0.1.1-green.svg)](https://github.com/nicenzhou/edge-gwas/releases)
 [![Documentation](https://readthedocs.org/projects/edge-gwas/badge/?version=latest)](https://edge-gwas.readthedocs.io)
