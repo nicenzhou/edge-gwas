@@ -121,8 +121,8 @@ where:
 
 $$G_{EDGE} = \begin{cases} 
 0 & \text{if } G = 0 \text{ (REF/REF)} \\
-\alpha & \text{if } G = 1 \text{ (REF/ALT)} \\
-1 & \text{if } G = 2 \text{ (ALT/ALT)}
+\alpha & \text{if } G = α \text{ (REF/ALT)} \\
+1 & \text{if } G = 1 \text{ (ALT/ALT)}
 \end{cases}$$
 
 where α is estimated from data:
