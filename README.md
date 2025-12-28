@@ -7,9 +7,7 @@
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-⚠️ **Current Version 0.1.1 - Under Public Testing**
-
-**Recommended to use v0.1.1 - more stable and more functions.**
+✅ **Recommended Version: 0.1.1** - Core functions validated, ready for use.
 
 ## Overview
 
@@ -48,7 +46,10 @@ EDGE GWAS (Elastic Data-Driven Encoding GWAS) identifies nonadditive genetic eff
 
 ```bash
 # Install edge-gwas
-pip install git+https://github.com/nicenzhou/edge-gwas.git
+pip install git+https://github.com/nicenzhou/edge-gwas.git@v0.1.1
+
+# Install the newest version as a developer
+pip install git+https://github.com/nicenzhou/edge-gwas.git@main
 
 # Install external tools (PLINK2, GCTA, R packages)
 edge-gwas-install-tools
