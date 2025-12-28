@@ -423,10 +423,14 @@ class EDGEAnalysis:
         outcome: str,
         covariates: List[str],
         grm: Optional[np.ndarray] = None,
-        grm_sample_ids: Optional[pd.Index] = None
+        grm_sample_ids: Optional[pd.Index] = None,
+        mean_centered: bool = False
     ) -> pd.DataFrame:
         """
         Fit codominant model (separate effects for het and hom).
+        
+        Args:
+            mean_centered: If True, mean-center outcome and covariates and fit without intercept
         """
         # Merge genotype data
         data = pd.merge(
@@ -463,8 +467,31 @@ class EDGEAnalysis:
                 self.skipped_snps.append(snp_name)
                 return pd.DataFrame()
         
-        # Add constant
-        X = sm.add_constant(X)
+        # Mean-centering if requested
+        if mean_centered:
+            # Mean-center outcome
+            if self.outcome_type == 'binary':
+                prevalence = y.mean()
+                y = y - prevalence
+                if self.verbose:
+                    logger.info(f"Mean-centering binary outcome. Prevalence: {prevalence:.4f}")
+            else:
+                mean_y = y.mean()
+                y = y - mean_y
+                if self.verbose:
+                    logger.info(f"Mean-centering continuous outcome. Mean: {mean_y:.4f}")
+            
+            # Mean-center all predictors (genotypes and covariates)
+            X = X - X.mean()
+            
+            # NO intercept for mean-centered model
+            add_intercept = False
+        else:
+            # Add constant for standard model
+            add_intercept = True
+        
+        if add_intercept:
+            X = sm.add_constant(X)
         
         # Apply GRM if provided
         if grm is not None and grm_sample_ids is not None:
@@ -472,12 +499,13 @@ class EDGEAnalysis:
             sample_indices = [list(grm_sample_ids).index(s) for s in merged_df.index]
             aligned_grm = grm[np.ix_(sample_indices, sample_indices)]
             
-            if self.outcome_type == 'continuous':
+            if self.outcome_type == 'continuous' or mean_centered:
                 # Transform data for linear mixed model
+                # (Use linear model for mean-centered binary outcome too)
                 try:
                     y_transformed, X_transformed = self._transform_with_grm_linear(y, X, aligned_grm)
                     
-                    # Fit OLS on transformed data - NO OPTIMIZATION METHOD NEEDED
+                    # Fit OLS on transformed data
                     model = sm.OLS(y_transformed, X_transformed)
                     result = model.fit()
                 except Exception as e:
@@ -485,7 +513,7 @@ class EDGEAnalysis:
                     self.skipped_snps.append(snp_name)
                     return pd.DataFrame()
                     
-            else:  # binary outcome
+            else:  # binary outcome without mean-centering
                 # Fit logistic mixed model
                 try:
                     result_dict = self._fit_logistic_mixed_model(
@@ -517,12 +545,12 @@ class EDGEAnalysis:
         else:
             # Fit standard model without GRM
             try:
-                if self.outcome_type == 'binary':
+                if self.outcome_type == 'binary' and not mean_centered:
                     # Binary outcome: use logistic regression with optimization
                     model = sm.Logit(y, X)
                     result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
                 else:
-                    # Continuous outcome: use OLS with direct solution (NO optimization method)
+                    # Continuous outcome or mean-centered: use OLS
                     model = sm.OLS(y, X)
                     result = model.fit()
             except Exception as e:
@@ -555,6 +583,7 @@ class EDGEAnalysis:
             logger.warning(f"Result extraction failed for {snp_name}: {str(e)}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
+
 
     
     def _fit_edge_model(
@@ -706,7 +735,8 @@ class EDGEAnalysis:
         covariates: List[str],
         variant_info: Optional[pd.DataFrame] = None,
         grm_matrix: Optional[np.ndarray] = None,
-        grm_sample_ids: Optional[pd.DataFrame] = None
+        grm_sample_ids: Optional[pd.DataFrame] = None,
+        mean_centered: bool = False
     ) -> pd.DataFrame:
         """
         Calculate EDGE alpha values from training data.
@@ -722,6 +752,8 @@ class EDGEAnalysis:
                          (columns: variant_id, ref_allele, alt_allele)
             grm_matrix: Optional GRM matrix from GCTA (for population structure control)
             grm_sample_ids: DataFrame with FID and ID corresponding to GRM rows
+            mean_centered: If True, use mean-centered codominant model without intercept
+                          (default: False)
             
         Returns:
             DataFrame with alpha values for each variant
@@ -743,6 +775,9 @@ class EDGEAnalysis:
                 grm_sample_ids
             )
         
+        if self.verbose and mean_centered:
+            logger.info("Using mean-centered codominant model (no intercept)")
+        
         n_variants = genotype_data.shape[1]
         
         for idx, variant_id in enumerate(genotype_data.columns):
@@ -759,9 +794,10 @@ class EDGEAnalysis:
             het.name = variant_id
             hom.name = variant_id
             
-            # Fit codominant model with optional GRM
+            # Fit codominant model with optional GRM and mean-centering
             result_df = self._fit_codominant_model(
-                het, hom, phenotype_df, outcome, covariates, aligned_grm, grm_ids
+                het, hom, phenotype_df, outcome, covariates, 
+                aligned_grm, grm_ids, mean_centered
             )
             
             if result_df.empty:
@@ -814,11 +850,14 @@ class EDGEAnalysis:
         if self.verbose:
             logger.info(f"Alpha calculation complete. Processed {len(alpha_results)} variants.")
             logger.info(f"Skipped {len(self.skipped_snps)} variants due to convergence issues.")
+            if mean_centered:
+                logger.info("Mean-centered codominant model was used (no intercept)")
             if self.outcome_transform:
                 logger.info(f"Outcome transformation applied: {self.outcome_transform}")
             logger.info(f"OLS optimization method used: {self.ols_method}")
         
         return self.alpha_values
+
     
     def apply_alpha(
         self,
