@@ -45,7 +45,7 @@ EDGE GWAS (Elastic Data-Driven Encoding GWAS) identifies nonadditive genetic eff
 ### Installation
 
 ```bash
-# Install edge-gwas
+# Install edge-gwas stable version v0.1.1
 pip install git+https://github.com/nicenzhou/edge-gwas.git@v0.1.1
 
 # Install the newest version as a developer
