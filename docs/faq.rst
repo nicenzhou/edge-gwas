@@ -509,11 +509,10 @@ See Also
 * `Documentation Home <index.html>`_ - Home
 * :ref:`installation` - Installation instructions and requirements
 * :ref:`quickstart` - Getting started guide with simple examples
-* :ref:`user_guide` - Comprehensive user guide and tutorials
-* :ref:`api_reference` - Complete API documentation
+* :ref:`statistical_model` - Statistical methods and mathematical background
 * :ref:`examples` - Example analyses and case studies
 * :ref:`visualization` - Plotting and visualization guide
-* :ref:`statistical_model` - Statistical methods and mathematical background
+* :ref:`api_reference` - Complete API documentation
 * :ref:`troubleshooting` - Troubleshooting guide and common issues
 * :ref:`faq` - Frequently asked questions
 * :ref:`citation` - How to cite EDGE in publications
@@ -522,6 +521,6 @@ See Also
 
 ---
 
-*Last updated: 2025-12-25 for edge-gwas v0.1.1*
+*Last updated: 2025-12-28 for edge-gwas v0.1.1*
 
 *For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues
