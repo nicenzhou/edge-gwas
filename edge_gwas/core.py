@@ -458,6 +458,13 @@ class EDGEAnalysis:
         X = merged_df[[f'{snp_name}_het', f'{snp_name}_hom'] + covariates]
         y = merged_df[outcome]
         
+        # Calculate n_cases and n_controls for binary outcomes
+        n_cases = None
+        n_controls = None
+        if self.outcome_type == 'binary':
+            n_cases = int(y.sum())
+            n_controls = int(len(y) - n_cases)
+        
         # Apply outcome transformation if specified (for continuous outcomes)
         if self.outcome_type == 'continuous' and self.outcome_transform is not None:
             try:
@@ -538,7 +545,7 @@ class EDGEAnalysis:
         
         # Extract results
         try:
-            result_df = pd.DataFrame({
+            result_dict = {
                 'snp': [snp_name],
                 'coef_het': [result.params[f'{snp_name}_het']],
                 'coef_hom': [result.params[f'{snp_name}_hom']],
@@ -553,7 +560,14 @@ class EDGEAnalysis:
                 'conf_int_low_hom': [result.conf_int().loc[f'{snp_name}_hom', 0]],
                 'conf_int_high_hom': [result.conf_int().loc[f'{snp_name}_hom', 1]],
                 'n_samples': [len(y)]
-            })
+            }
+            
+            # Add n_cases and n_controls for binary outcomes
+            if self.outcome_type == 'binary':
+                result_dict['n_cases'] = [n_cases]
+                result_dict['n_controls'] = [n_controls]
+            
+            result_df = pd.DataFrame(result_dict)
             
             return result_df
             
@@ -561,7 +575,6 @@ class EDGEAnalysis:
             logger.warning(f"Result extraction failed for {snp_name}: {str(e)}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
-
 
     
     def _fit_edge_model(
@@ -609,6 +622,13 @@ class EDGEAnalysis:
         X = merged_df[[snp_name] + covariates]
         y = merged_df[outcome]
         
+        # Calculate n_cases and n_controls for binary outcomes
+        n_cases = None
+        n_controls = None
+        if self.outcome_type == 'binary':
+            n_cases = int(y.sum())
+            n_controls = int(len(y) - n_cases)
+        
         # Apply outcome transformation if specified (for continuous outcomes)
         if self.outcome_type == 'continuous' and self.outcome_transform is not None:
             try:
@@ -632,7 +652,7 @@ class EDGEAnalysis:
                 try:
                     y_transformed, X_transformed = self._transform_with_grm_linear(y, X, aligned_grm)
                     
-                    # Fit OLS on transformed data - NO OPTIMIZATION METHOD NEEDED
+                    # Fit OLS on transformed data
                     model = sm.OLS(y_transformed, X_transformed)
                     result = model.fit()
                 except Exception as e:
@@ -677,7 +697,7 @@ class EDGEAnalysis:
                     model = sm.Logit(y, X)
                     result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
                 else:
-                    # Continuous outcome: use OLS with direct solution (NO optimization method)
+                    # Continuous outcome: use OLS
                     model = sm.OLS(y, X)
                     result = model.fit()
             except Exception as e:
@@ -687,7 +707,7 @@ class EDGEAnalysis:
         
         # Extract results
         try:
-            result_df = pd.DataFrame({
+            result_dict = {
                 'snp': [snp_name],
                 'coef': [result.params[snp_name]],
                 'std_err': [result.bse[snp_name]],
@@ -696,7 +716,14 @@ class EDGEAnalysis:
                 'conf_int_low': [result.conf_int().loc[snp_name, 0]],
                 'conf_int_high': [result.conf_int().loc[snp_name, 1]],
                 'n_samples': [len(y)]
-            })
+            }
+            
+            # Add n_cases and n_controls for binary outcomes
+            if self.outcome_type == 'binary':
+                result_dict['n_cases'] = [n_cases]
+                result_dict['n_controls'] = [n_controls]
+            
+            result_df = pd.DataFrame(result_dict)
             
             return result_df
             
@@ -704,6 +731,7 @@ class EDGEAnalysis:
             logger.warning(f"Result extraction failed for {snp_name}: {str(e)}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
+        
     
     def calculate_alpha(
         self,
@@ -736,9 +764,12 @@ class EDGEAnalysis:
             
         Returns:
             DataFrame with alpha values for each variant
-            Columns: chrom, pos, variant_id, alpha_value, ref_allele, alt_allele, 
-                    eaf, coef_het, coef_hom, std_err_het, std_err_hom, 
-                    pval_het, pval_hom, n_samples, convergence_status
+            For binary outcomes, columns include: chrom, pos, variant_id, alpha_value, 
+                    ref_allele, alt_allele, eaf, coef_het, coef_hom, std_err_het, 
+                    std_err_hom, conf_int_low_het, conf_int_high_het, conf_int_low_hom, 
+                    conf_int_high_hom, pval_het, pval_hom, n_samples, n_cases, n_controls, 
+                    convergence_status
+            For continuous outcomes, n_cases and n_controls are not included
         """
         self.skipped_snps = []
         alpha_results = []
@@ -801,7 +832,7 @@ class EDGEAnalysis:
             else:
                 eaf = np.nan
             
-            alpha_results.append({
+            result_dict = {
                 'variant_id': variant_id,
                 'alpha_value': alpha_value,
                 'eaf': eaf,
@@ -809,11 +840,22 @@ class EDGEAnalysis:
                 'coef_hom': coef_hom,
                 'std_err_het': result_df['std_err_het'].iloc[0],
                 'std_err_hom': result_df['std_err_hom'].iloc[0],
+                'conf_int_low_het': result_df['conf_int_low_het'].iloc[0],
+                'conf_int_high_het': result_df['conf_int_high_het'].iloc[0],
+                'conf_int_low_hom': result_df['conf_int_low_hom'].iloc[0],
+                'conf_int_high_hom': result_df['conf_int_high_hom'].iloc[0],
                 'pval_het': result_df['pval_het'].iloc[0],
                 'pval_hom': result_df['pval_hom'].iloc[0],
                 'n_samples': result_df['n_samples'].iloc[0],
                 'convergence_status': 'converged'
-            })
+            }
+            
+            # Add n_cases and n_controls for binary outcomes
+            if self.outcome_type == 'binary':
+                result_dict['n_cases'] = result_df['n_cases'].iloc[0]
+                result_dict['n_controls'] = result_df['n_controls'].iloc[0]
+            
+            alpha_results.append(result_dict)
         
         alpha_df = pd.DataFrame(alpha_results)
         
@@ -824,7 +866,7 @@ class EDGEAnalysis:
                 variant_info = variant_info.copy()
                 variant_info.index.name = 'variant_id'
             
-            # Reset index of alpha_df to merge on variant_id
+            # Set index of alpha_df to merge on variant_id
             alpha_df = alpha_df.set_index('variant_id')
             
             # Select relevant columns from variant_info
@@ -845,9 +887,16 @@ class EDGEAnalysis:
             alpha_df = alpha_df.reset_index()
         
         # Reorder columns
-        final_cols = ['chrom', 'pos', 'variant_id', 'alpha_value', 'ref_allele', 'alt_allele',
-                      'eaf', 'coef_het', 'coef_hom', 'std_err_het', 'std_err_hom',
-                      'pval_het', 'pval_hom', 'n_samples', 'convergence_status']
+        if self.outcome_type == 'binary':
+            final_cols = ['chrom', 'pos', 'variant_id', 'alpha_value', 'ref_allele', 'alt_allele',
+                          'eaf', 'coef_het', 'coef_hom', 'std_err_het', 'std_err_hom',
+                          'conf_int_low_het', 'conf_int_high_het', 'conf_int_low_hom', 'conf_int_high_hom',
+                          'pval_het', 'pval_hom', 'n_samples', 'n_cases', 'n_controls', 'convergence_status']
+        else:
+            final_cols = ['chrom', 'pos', 'variant_id', 'alpha_value', 'ref_allele', 'alt_allele',
+                          'eaf', 'coef_het', 'coef_hom', 'std_err_het', 'std_err_hom',
+                          'conf_int_low_het', 'conf_int_high_het', 'conf_int_low_hom', 'conf_int_high_hom',
+                          'pval_het', 'pval_hom', 'n_samples', 'convergence_status']
         
         # Only include columns that exist
         final_cols = [col for col in final_cols if col in alpha_df.columns]
@@ -898,9 +947,10 @@ class EDGEAnalysis:
             
         Returns:
             DataFrame with GWAS results
-            Columns: chrom, pos, ref, alt, variant_id, snp, alpha_value, 
+            For binary outcomes, columns: chrom, pos, variant_id, ref, alt, alpha_value, 
                     coef, std_err, stat, pval, conf_int_low, conf_int_high, 
-                    n_samples, maf, eaf
+                    n_samples, n_cases, n_controls, maf, eaf
+            For continuous outcomes, n_cases and n_controls are not included
         """
         # Use provided alpha values or stored values
         if alpha_values is None:
@@ -977,9 +1027,8 @@ class EDGEAnalysis:
                 eaf = np.nan
                 maf = np.nan
             
-            gwas_results.append({
+            result_dict = {
                 'variant_id': variant_id,
-                'snp': variant_id,
                 'alpha_value': alpha_value,
                 'coef': result_df['coef'].iloc[0],
                 'std_err': result_df['std_err'].iloc[0],
@@ -990,7 +1039,14 @@ class EDGEAnalysis:
                 'n_samples': result_df['n_samples'].iloc[0],
                 'maf': maf,
                 'eaf': eaf
-            })
+            }
+            
+            # Add n_cases and n_controls for binary outcomes
+            if self.outcome_type == 'binary':
+                result_dict['n_cases'] = result_df['n_cases'].iloc[0]
+                result_dict['n_controls'] = result_df['n_controls'].iloc[0]
+            
+            gwas_results.append(result_dict)
         
         if not gwas_results:
             logger.warning("No variants were successfully analyzed.")
@@ -1031,10 +1087,15 @@ class EDGEAnalysis:
         if 'alt_allele' in gwas_df.columns:
             gwas_df = gwas_df.rename(columns={'alt_allele': 'alt'})
         
-        # Reorder columns
-        final_cols = ['chrom', 'pos', 'ref', 'alt', 'variant_id', 'snp', 'alpha_value',
-                      'coef', 'std_err', 'stat', 'pval', 'conf_int_low', 'conf_int_high',
-                      'n_samples', 'maf', 'eaf']
+        # Reorder columns - chrom and pos first, then variant_id
+        if self.outcome_type == 'binary':
+            final_cols = ['chrom', 'pos', 'variant_id', 'ref', 'alt', 'alpha_value',
+                          'coef', 'std_err', 'stat', 'pval', 'conf_int_low', 'conf_int_high',
+                          'n_samples', 'n_cases', 'n_controls', 'maf', 'eaf']
+        else:
+            final_cols = ['chrom', 'pos', 'variant_id', 'ref', 'alt', 'alpha_value',
+                          'coef', 'std_err', 'stat', 'pval', 'conf_int_low', 'conf_int_high',
+                          'n_samples', 'maf', 'eaf']
         
         # Only include columns that exist
         final_cols = [col for col in final_cols if col in gwas_df.columns]
@@ -1054,7 +1115,7 @@ class EDGEAnalysis:
                     logger.info(f"MAF range: {valid_maf.min():.4f} - {valid_maf.max():.4f}")
         
         return gwas_df
-
+    
 
     def _parse_variant_id(
         self,
