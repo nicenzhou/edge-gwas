@@ -29,15 +29,6 @@ BibTeX Entry
      url={https://doi.org/10.1101/2023.06.01.23290857}
    }
 
-Related Publications
---------------------
-
-If you use EDGE methodology in your research, you may also want to cite:
-
-**Original EDGE methodology papers** (add as they become available):
-
-* Zhou, J., et al. (2023). Detailed methodology paper [In preparation]
-* Hall, M. A., et al. (2023). Applications in cardiometabolic disease [In preparation]
 
 Acknowledgments
 ---------------
