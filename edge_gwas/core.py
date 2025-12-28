@@ -939,6 +939,8 @@ class EDGEAnalysis:
             covariates: List of covariate names in phenotype_df
             alpha_values: DataFrame with alpha values (from calculate_alpha)
                          If None, uses self.alpha_values from previous calculation
+                         Must contain: variant_id, alpha_value
+                         Should contain: chrom, pos, ref_allele, alt_allele
             grm_matrix: Optional GRM matrix from GCTA (for population structure control)
             grm_sample_ids: DataFrame with FID and IID corresponding to GRM rows
             variant_info: Optional DataFrame with variant information
@@ -947,8 +949,8 @@ class EDGEAnalysis:
             
         Returns:
             DataFrame with GWAS results
-            For binary outcomes, columns: chrom, pos, variant_id, ref, alt, alpha_value, 
-                    coef, std_err, stat, pval, conf_int_low, conf_int_high, 
+            For binary outcomes, columns: chrom, pos, variant_id, ref_allele, alt_allele, 
+                    alpha_value, coef, std_err, stat, pval, conf_int_low, conf_int_high, 
                     n_samples, n_cases, n_controls, maf, eaf
             For continuous outcomes, n_cases and n_controls are not included
         """
@@ -956,7 +958,9 @@ class EDGEAnalysis:
         if alpha_values is None:
             if self.alpha_values is None:
                 raise ValueError("No alpha values provided. Run calculate_alpha first or provide alpha_values.")
-            alpha_values = self.alpha_values
+            alpha_values = self.alpha_values.copy()
+        else:
+            alpha_values = alpha_values.copy()
         
         # Check that alpha_values has required columns
         required_cols = ['variant_id', 'alpha_value']
@@ -965,6 +969,10 @@ class EDGEAnalysis:
         
         # Create alpha lookup dictionary
         alpha_dict = dict(zip(alpha_values['variant_id'], alpha_values['alpha_value']))
+        
+        # Set variant_id as index for alpha_values if not already
+        if alpha_values.index.name != 'variant_id':
+            alpha_values = alpha_values.set_index('variant_id')
         
         # Prepare GRM if provided
         aligned_grm = None
@@ -1054,46 +1062,47 @@ class EDGEAnalysis:
         
         gwas_df = pd.DataFrame(gwas_results)
         
-        # Merge with variant_info if provided
+        # Set variant_id as index for merging
+        gwas_df = gwas_df.set_index('variant_id')
+        
+        # Merge with alpha_values to get variant information (chrom, pos, ref_allele, alt_allele)
+        info_cols_from_alpha = []
+        for col in ['chrom', 'pos', 'ref_allele', 'alt_allele']:
+            if col in alpha_values.columns:
+                info_cols_from_alpha.append(col)
+        
+        if info_cols_from_alpha:
+            gwas_df = gwas_df.join(alpha_values[info_cols_from_alpha], how='left')
+        
+        # If variant_info is provided, merge additional information (will override alpha_values info if present)
         if variant_info is not None:
             # Ensure variant_info index name is variant_id
             if variant_info.index.name != 'variant_id':
                 variant_info = variant_info.copy()
                 variant_info.index.name = 'variant_id'
             
-            # Set index of gwas_df to merge on variant_id
-            gwas_df = gwas_df.set_index('variant_id')
-            
             # Select relevant columns from variant_info
-            info_cols = []
-            if 'chrom' in variant_info.columns:
-                info_cols.append('chrom')
-            if 'pos' in variant_info.columns:
-                info_cols.append('pos')
-            if 'ref_allele' in variant_info.columns:
-                info_cols.append('ref_allele')
-            if 'alt_allele' in variant_info.columns:
-                info_cols.append('alt_allele')
+            info_cols_from_variant_info = []
+            for col in ['chrom', 'pos', 'ref_allele', 'alt_allele']:
+                if col in variant_info.columns:
+                    # Only add if not already added from alpha_values, or to override
+                    info_cols_from_variant_info.append(col)
             
-            if info_cols:
-                gwas_df = gwas_df.join(variant_info[info_cols], how='left')
-            
-            # Reset index to get variant_id as column
-            gwas_df = gwas_df.reset_index()
+            if info_cols_from_variant_info:
+                # Update with variant_info (will override alpha_values if columns overlap)
+                for col in info_cols_from_variant_info:
+                    gwas_df[col] = variant_info[col]
         
-        # Rename ref_allele and alt_allele to ref and alt for final output
-        if 'ref_allele' in gwas_df.columns:
-            gwas_df = gwas_df.rename(columns={'ref_allele': 'ref'})
-        if 'alt_allele' in gwas_df.columns:
-            gwas_df = gwas_df.rename(columns={'alt_allele': 'alt'})
+        # Reset index to get variant_id as column
+        gwas_df = gwas_df.reset_index()
         
         # Reorder columns - chrom and pos first, then variant_id
         if self.outcome_type == 'binary':
-            final_cols = ['chrom', 'pos', 'variant_id', 'ref', 'alt', 'alpha_value',
+            final_cols = ['chrom', 'pos', 'variant_id', 'ref_allele', 'alt_allele', 'alpha_value',
                           'coef', 'std_err', 'stat', 'pval', 'conf_int_low', 'conf_int_high',
                           'n_samples', 'n_cases', 'n_controls', 'maf', 'eaf']
         else:
-            final_cols = ['chrom', 'pos', 'variant_id', 'ref', 'alt', 'alpha_value',
+            final_cols = ['chrom', 'pos', 'variant_id', 'ref_allele', 'alt_allele', 'alpha_value',
                           'coef', 'std_err', 'stat', 'pval', 'conf_int_low', 'conf_int_high',
                           'n_samples', 'maf', 'eaf']
         
@@ -1107,6 +1116,11 @@ class EDGEAnalysis:
             if self.outcome_transform:
                 logger.info(f"Outcome transformation applied: {self.outcome_transform}")
             logger.info(f"OLS optimization method used: {self.ols_method}")
+            
+            # Report variant info availability
+            if 'chrom' in gwas_df.columns and 'pos' in gwas_df.columns:
+                n_with_pos = gwas_df['pos'].notna().sum()
+                logger.info(f"Variants with position information: {n_with_pos}/{len(gwas_df)}")
             
             # Report MAF/EAF statistics
             if 'maf' in gwas_df.columns:
@@ -1213,12 +1227,14 @@ class EDGEAnalysis:
             test_phenotype: Test phenotype data
             outcome: Name of outcome variable
             covariates: List of covariate names
-            variant_info: Optional variant information
+            variant_info: Optional variant information DataFrame
+                         Index: variant_id
+                         Columns: chrom, pos, ref_allele, alt_allele, MAF
             grm_matrix: Optional GRM matrix from GCTA
             grm_sample_ids: Optional sample IDs for GRM
             mean_centered: If True, use mean-centered model without intercept (default: False)
             output_prefix: Optional prefix for output files
-            
+                
         Returns:
             Tuple of (alpha_df, gwas_df)
         """
@@ -1253,14 +1269,17 @@ class EDGEAnalysis:
         
         # Apply alpha values on test data
         logger.info("Step 2: Applying alpha values on test data...")
+        # Pass alpha_df (which includes chrom, pos, ref_allele, alt_allele from calculate_alpha)
+        # Also pass variant_info to ensure all information is available
         gwas_df = self.apply_alpha(
             test_genotype,
             test_phenotype,
             outcome,
             covariates,
-            alpha_df,
+            alpha_df,  # Pass the alpha_df with variant information
             grm_matrix,
-            grm_sample_ids
+            grm_sample_ids,
+            variant_info  # Also pass variant_info for completeness
         )
         
         # Save GWAS results if output prefix provided
@@ -1279,6 +1298,7 @@ class EDGEAnalysis:
         logger.info("EDGE analysis complete!")
         
         return alpha_df, gwas_df
+    
     
     def get_skipped_snps(self) -> List[str]:
         """
