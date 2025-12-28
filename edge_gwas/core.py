@@ -1038,7 +1038,7 @@ class EDGEAnalysis:
         except Exception as e:
             logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
             import traceback
-            logger.warning(f"logger.warning(f"Traceback: {traceback.format_exc()}")
+            logger.warning(f"Traceback: {traceback.format_exc()}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
         
