@@ -190,32 +190,39 @@ class EDGEAnalysis:
         Args:
             sample_ids: Sample IDs from the analysis data
             grm_matrix: Full GRM matrix from GCTA
-            grm_sample_ids: DataFrame with FID and IID from GRM
-            
+            grm_sample_ids: DataFrame with columns FID, IID, sample_id from GRM
+                
         Returns:
             Tuple of (aligned_grm, common_sample_ids)
         """
-        # Create sample ID mapping
-        grm_sample_ids['sample_id'] = grm_sample_ids['IID'].astype(str)
-        sample_ids_str = sample_ids.astype(str)
+        # Use sample_id column from grm_sample_ids
+        if 'sample_id' not in grm_sample_ids.columns:
+            raise ValueError("grm_sample_ids must contain 'sample_id' column")
         
-        # Find common samples maintaining order
-        common_samples = [s for s in sample_ids_str if s in grm_sample_ids['sample_id'].values]
+        # Convert to string for consistent matching
+        grm_sample_id_list = grm_sample_ids['sample_id'].astype(str).tolist()
+        sample_ids_str = sample_ids.astype(str).tolist()
+        
+        # Find common samples maintaining order from sample_ids
+        common_samples = [s for s in sample_ids_str if s in grm_sample_id_list]
         
         if len(common_samples) == 0:
             raise ValueError("No common samples found between analysis data and GRM")
         
         if self.verbose:
             logger.info(f"Found {len(common_samples)} common samples between data and GRM")
+            logger.info(f"Analysis data samples: {len(sample_ids)}")
+            logger.info(f"GRM samples: {len(grm_sample_id_list)}")
         
         # Get indices for common samples in GRM
-        grm_id_to_idx = {sid: idx for idx, sid in enumerate(grm_sample_ids['sample_id'])}
+        grm_id_to_idx = {sid: idx for idx, sid in enumerate(grm_sample_id_list)}
         grm_indices = [grm_id_to_idx[s] for s in common_samples]
         
         # Extract GRM submatrix for common samples
         aligned_grm = grm_matrix[np.ix_(grm_indices, grm_indices)]
         
         return aligned_grm, pd.Index(common_samples)
+    
     
     def _transform_with_grm_linear(
         self,
@@ -422,7 +429,7 @@ class EDGEAnalysis:
         phenotype_df: pd.DataFrame,
         outcome: str,
         covariates: List[str],
-        grm: Optional[np.ndarray] = None,
+        grm_matrix: Optional[np.ndarray] = None,
         grm_sample_ids: Optional[pd.Index] = None,
         mean_centered: bool = False
     ) -> pd.DataFrame:
@@ -430,7 +437,14 @@ class EDGEAnalysis:
         Fit codominant model (separate effects for het and hom).
         
         Args:
-            mean_centered: If True, fit codominant regression without intercept.
+            het_data: Heterozygous genotype indicators
+            hom_data: Homozygous genotype indicators
+            phenotype_df: DataFrame with outcome and covariates
+            outcome: Name of outcome variable
+            covariates: List of covariate names
+            grm_matrix: Optional ALIGNED GRM matrix (already subset to common samples)
+            grm_sample_ids: Sample IDs (as pd.Index) corresponding to the aligned GRM rows/columns
+            mean_centered: If True, fit codominant regression without intercept
         """
         # Merge genotype data
         data = pd.merge(
@@ -444,13 +458,6 @@ class EDGEAnalysis:
         # Merge with phenotype data
         merged_df = pd.merge(data, phenotype_df, left_index=True, right_index=True)
         merged_df = merged_df.dropna()
-        
-        # If GRM is provided, subset to common samples
-        if grm is not None and grm_sample_ids is not None:
-            merged_df = merged_df.loc[merged_df.index.intersection(grm_sample_ids)]
-            if len(merged_df) == 0:
-                logger.warning(f"No samples remain after GRM alignment for {het_data.name}")
-                return pd.DataFrame()
         
         snp_name = het_data.name
         
@@ -490,22 +497,64 @@ class EDGEAnalysis:
         hom_idx = feature_names.index(hom_col_name)
         
         # Apply GRM if provided
-        if grm is not None and grm_sample_ids is not None:
-            # Align GRM to current samples
-            sample_indices = [list(grm_sample_ids).index(s) for s in merged_df.index]
-            aligned_grm = grm[np.ix_(sample_indices, sample_indices)]
+        if grm_matrix is not None and grm_sample_ids is not None:
+            # Further subset GRM to samples in current analysis (after merging and dropping NAs)
+            # The grm_matrix passed in is already aligned to genotype samples
+            # But we may have fewer samples after merging with phenotypes
+            grm_sample_list = list(grm_sample_ids)
+            merged_sample_list = merged_df.index.astype(str).tolist()
+            
+            sample_indices = [grm_sample_list.index(s) for s in merged_sample_list if s in grm_sample_list]
+            
+            if len(sample_indices) == 0:
+                logger.warning(f"No samples remain after GRM alignment for {snp_name}")
+                self.skipped_snps.append(snp_name)
+                return pd.DataFrame()
+            
+            # Subset the already-aligned GRM to current samples
+            current_grm = grm_matrix[np.ix_(sample_indices, sample_indices)]
             
             if self.outcome_type == 'continuous' or mean_centered:
                 # Transform data for linear mixed model
                 # (Use linear model for mean-centered binary outcome too)
                 try:
-                    y_transformed, X_transformed = self._transform_with_grm_linear(y, X, aligned_grm)
+                    y_transformed, X_transformed = self._transform_with_grm_linear(y, X, current_grm)
                     
                     # Fit OLS on transformed data
                     model = sm.OLS(y_transformed, X_transformed)
                     result = model.fit()
+                    
+                    # Extract using integer indices
+                    conf_int_df = result.conf_int()
+                    
+                    result_data = {
+                        'snp': [snp_name],
+                        'coef_het': [result.params.iloc[het_idx]],
+                        'coef_hom': [result.params.iloc[hom_idx]],
+                        'std_err_het': [result.bse.iloc[het_idx]],
+                        'std_err_hom': [result.bse.iloc[hom_idx]],
+                        'stat_het': [result.tvalues.iloc[het_idx]],
+                        'stat_hom': [result.tvalues.iloc[hom_idx]],
+                        'pval_het': [result.pvalues.iloc[het_idx]],
+                        'pval_hom': [result.pvalues.iloc[hom_idx]],
+                        'conf_int_low_het': [conf_int_df.iloc[het_idx, 0]],
+                        'conf_int_high_het': [conf_int_df.iloc[het_idx, 1]],
+                        'conf_int_low_hom': [conf_int_df.iloc[hom_idx, 0]],
+                        'conf_int_high_hom': [conf_int_df.iloc[hom_idx, 1]],
+                        'n_samples': [len(y)]
+                    }
+                    
+                    # Add n_cases and n_controls for binary outcomes
+                    if self.outcome_type == 'binary':
+                        result_data['n_cases'] = [n_cases]
+                        result_data['n_controls'] = [n_controls]
+                    
+                    return pd.DataFrame(result_data)
+                    
                 except Exception as e:
                     logger.warning(f"GRM-based linear model fitting failed for {snp_name}: {str(e)}")
+                    import traceback
+                    logger.warning(f"Traceback: {traceback.format_exc()}")
                     self.skipped_snps.append(snp_name)
                     return pd.DataFrame()
                     
@@ -513,7 +562,7 @@ class EDGEAnalysis:
                 # Fit logistic mixed model
                 try:
                     result_dict = self._fit_logistic_mixed_model(
-                        y.values, X.values, aligned_grm
+                        y.values, X.values, current_grm
                     )
                     
                     # Extract results directly from dict using indices
@@ -547,52 +596,52 @@ class EDGEAnalysis:
                     logger.warning(f"Traceback: {traceback.format_exc()}")
                     self.skipped_snps.append(snp_name)
                     return pd.DataFrame()
-        else:
-            # Fit standard model without GRM
-            try:
-                if self.outcome_type == 'binary' and not mean_centered:
-                    # Binary outcome: use logistic regression with optimization
-                    model = sm.Logit(y, X)
-                    result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
-                else:
-                    # Continuous outcome or mean-centered: use OLS
-                    model = sm.OLS(y, X)
-                    result = model.fit()
-            except Exception as e:
-                logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
-                self.skipped_snps.append(snp_name)
-                return pd.DataFrame()
         
-        # Extract results - use the original column names
+        # Fit standard model without GRM
+        try:
+            if self.outcome_type == 'binary' and not mean_centered:
+                # Binary outcome: use logistic regression with optimization
+                model = sm.Logit(y, X)
+                result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
+            else:
+                # Continuous outcome or mean-centered: use OLS
+                model = sm.OLS(y, X)
+                result = model.fit()
+        except Exception as e:
+            logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
+            import traceback
+            logger.warning(f"Traceback: {traceback.format_exc()}")
+            self.skipped_snps.append(snp_name)
+            return pd.DataFrame()
+        
+        # Extract results using integer indices for standard models
         try:
             # Get confidence intervals
             conf_int_df = result.conf_int()
             
-            result_dict = {
+            result_data = {
                 'snp': [snp_name],
-                'coef_het': [result.params[het_col_name]],
-                'coef_hom': [result.params[hom_col_name]],
-                'std_err_het': [result.bse[het_col_name]],
-                'std_err_hom': [result.bse[hom_col_name]],
-                'stat_het': [result.tvalues[het_col_name]],
-                'stat_hom': [result.tvalues[hom_col_name]],
-                'pval_het': [result.pvalues[het_col_name]],
-                'pval_hom': [result.pvalues[hom_col_name]],
-                'conf_int_low_het': [conf_int_df.loc[het_col_name, 0]],
-                'conf_int_high_het': [conf_int_df.loc[het_col_name, 1]],
-                'conf_int_low_hom': [conf_int_df.loc[hom_col_name, 0]],
-                'conf_int_high_hom': [conf_int_df.loc[hom_col_name, 1]],
+                'coef_het': [result.params.iloc[het_idx]],
+                'coef_hom': [result.params.iloc[hom_idx]],
+                'std_err_het': [result.bse.iloc[het_idx]],
+                'std_err_hom': [result.bse.iloc[hom_idx]],
+                'stat_het': [result.tvalues.iloc[het_idx]],
+                'stat_hom': [result.tvalues.iloc[hom_idx]],
+                'pval_het': [result.pvalues.iloc[het_idx]],
+                'pval_hom': [result.pvalues.iloc[hom_idx]],
+                'conf_int_low_het': [conf_int_df.iloc[het_idx, 0]],
+                'conf_int_high_het': [conf_int_df.iloc[het_idx, 1]],
+                'conf_int_low_hom': [conf_int_df.iloc[hom_idx, 0]],
+                'conf_int_high_hom': [conf_int_df.iloc[hom_idx, 1]],
                 'n_samples': [len(y)]
             }
             
             # Add n_cases and n_controls for binary outcomes
             if self.outcome_type == 'binary':
-                result_dict['n_cases'] = [n_cases]
-                result_dict['n_controls'] = [n_controls]
+                result_data['n_cases'] = [n_cases]
+                result_data['n_controls'] = [n_controls]
             
-            result_df = pd.DataFrame(result_dict)
-            
-            return result_df
+            return pd.DataFrame(result_data)
             
         except Exception as e:
             logger.warning(f"Result extraction failed for {snp_name}: {str(e)}")
@@ -608,7 +657,7 @@ class EDGEAnalysis:
         phenotype_df: pd.DataFrame,
         outcome: str,
         covariates: List[str],
-        grm: Optional[np.ndarray] = None,
+        grm_matrix: Optional[np.ndarray] = None,
         grm_sample_ids: Optional[pd.Index] = None
     ) -> pd.DataFrame:
         """
@@ -619,8 +668,8 @@ class EDGEAnalysis:
             phenotype_df: DataFrame containing outcome and covariates
             outcome: Name of outcome variable
             covariates: List of covariate names
-            grm: Optional aligned GRM matrix for mixed model
-            grm_sample_ids: Sample IDs corresponding to GRM rows
+            grm_matrix: Optional ALIGNED GRM matrix (already subset to common samples)
+            grm_sample_ids: Sample IDs (as pd.Index) corresponding to the aligned GRM rows/columns
             
         Returns:
             DataFrame with model results
@@ -633,13 +682,6 @@ class EDGEAnalysis:
             right_index=True
         )
         merged_df = merged_df.dropna()
-        
-        # If GRM is provided, subset to common samples
-        if grm is not None and grm_sample_ids is not None:
-            merged_df = merged_df.loc[merged_df.index.intersection(grm_sample_ids)]
-            if len(merged_df) == 0:
-                logger.warning(f"No samples remain after GRM alignment for {edge_data.name}")
-                return pd.DataFrame()
         
         snp_name = edge_data.name
         
@@ -667,15 +709,26 @@ class EDGEAnalysis:
         X = sm.add_constant(X)
         
         # Apply GRM if provided
-        if grm is not None and grm_sample_ids is not None:
-            # Align GRM to current samples
-            sample_indices = [list(grm_sample_ids).index(s) for s in merged_df.index]
-            aligned_grm = grm[np.ix_(sample_indices, sample_indices)]
+        if grm_matrix is not None and grm_sample_ids is not None:
+            # Further subset GRM to samples in current analysis
+            # Convert grm_sample_ids to list for indexing
+            grm_sample_list = list(grm_sample_ids)
+            merged_sample_list = merged_df.index.astype(str).tolist()
+            
+            sample_indices = [grm_sample_list.index(s) for s in merged_sample_list if s in grm_sample_list]
+            
+            if len(sample_indices) == 0:
+                logger.warning(f"No samples remain after GRM alignment for {snp_name}")
+                self.skipped_snps.append(snp_name)
+                return pd.DataFrame()
+            
+            # Subset the already-aligned GRM to current samples
+            current_grm = grm_matrix[np.ix_(sample_indices, sample_indices)]
             
             if self.outcome_type == 'continuous':
                 # Transform data for linear mixed model
                 try:
-                    y_transformed, X_transformed = self._transform_with_grm_linear(y, X, aligned_grm)
+                    y_transformed, X_transformed = self._transform_with_grm_linear(y, X, current_grm)
                     
                     # Fit OLS on transformed data
                     model = sm.OLS(y_transformed, X_transformed)
@@ -689,57 +742,67 @@ class EDGEAnalysis:
                 # Fit logistic mixed model
                 try:
                     result_dict = self._fit_logistic_mixed_model(
-                        y.values, X.values, aligned_grm
+                        y.values, X.values, current_grm
                     )
                     
-                    # Create a result-like object
-                    class MixedModelResult:
-                        def __init__(self, res_dict, feature_names):
-                            self.params = pd.Series(res_dict['params'], index=feature_names)
-                            self.bse = pd.Series(res_dict['bse'], index=feature_names)
-                            self.tvalues = pd.Series(res_dict['tvalues'], index=feature_names)
-                            self.pvalues = pd.Series(res_dict['pvalues'], index=feature_names)
-                            self._conf_int_lower = pd.Series(res_dict['conf_int_lower'], index=feature_names)
-                            self._conf_int_upper = pd.Series(res_dict['conf_int_upper'], index=feature_names)
-                        
-                        def conf_int(self):
-                            return pd.DataFrame({
-                                0: self._conf_int_lower,
-                                1: self._conf_int_upper
-                            })
+                    # Extract results directly using indices
+                    # Find index of snp_name in X.columns
+                    snp_idx = X.columns.tolist().index(snp_name)
                     
-                    result = MixedModelResult(result_dict, X.columns)
+                    result_data = {
+                        'snp': [snp_name],
+                        'coef': [result_dict['params'][snp_idx]],
+                        'std_err': [result_dict['bse'][snp_idx]],
+                        'stat': [result_dict['tvalues'][snp_idx]],
+                        'pval': [result_dict['pvalues'][snp_idx]],
+                        'conf_int_low': [result_dict['conf_int_lower'][snp_idx]],
+                        'conf_int_high': [result_dict['conf_int_upper'][snp_idx]],
+                        'n_samples': [len(y)]
+                    }
+                    
+                    # Add n_cases and n_controls for binary outcomes
+                    if self.outcome_type == 'binary':
+                        result_data['n_cases'] = [n_cases]
+                        result_data['n_controls'] = [n_controls]
+                    
+                    return pd.DataFrame(result_data)
                     
                 except Exception as e:
                     logger.warning(f"GRM-based logistic model fitting failed for {snp_name}: {str(e)}")
+                    import traceback
+                    logger.warning(f"Traceback: {traceback.format_exc()}")
                     self.skipped_snps.append(snp_name)
                     return pd.DataFrame()
-        else:
-            # Fit standard model without GRM
-            try:
-                if self.outcome_type == 'binary':
-                    # Binary outcome: use logistic regression with optimization
-                    model = sm.Logit(y, X)
-                    result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
-                else:
-                    # Continuous outcome: use OLS
-                    model = sm.OLS(y, X)
-                    result = model.fit()
-            except Exception as e:
-                logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
-                self.skipped_snps.append(snp_name)
-                return pd.DataFrame()
         
-        # Extract results
+        # Fit standard model without GRM
         try:
+            if self.outcome_type == 'binary':
+                # Binary outcome: use logistic regression with optimization
+                model = sm.Logit(y, X)
+                result = model.fit(method='bfgs', maxiter=self.max_iter, disp=False)
+            else:
+                # Continuous outcome: use OLS
+                model = sm.OLS(y, X)
+                result = model.fit()
+        except Exception as e:
+            logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
+            self.skipped_snps.append(snp_name)
+            return pd.DataFrame()
+        
+        # Extract results using column name for standard models
+        try:
+            # Find index of snp_name
+            snp_idx = X.columns.tolist().index(snp_name)
+            conf_int_df = result.conf_int()
+            
             result_dict = {
                 'snp': [snp_name],
-                'coef': [result.params[snp_name]],
-                'std_err': [result.bse[snp_name]],
-                'stat': [result.tvalues[snp_name]],
-                'pval': [result.pvalues[snp_name]],
-                'conf_int_low': [result.conf_int().loc[snp_name, 0]],
-                'conf_int_high': [result.conf_int().loc[snp_name, 1]],
+                'coef': [result.params.iloc[snp_idx]],
+                'std_err': [result.bse.iloc[snp_idx]],
+                'stat': [result.tvalues.iloc[snp_idx]],
+                'pval': [result.pvalues.iloc[snp_idx]],
+                'conf_int_low': [conf_int_df.iloc[snp_idx, 0]],
+                'conf_int_high': [conf_int_df.iloc[snp_idx, 1]],
                 'n_samples': [len(y)]
             }
             
@@ -754,6 +817,8 @@ class EDGEAnalysis:
             
         except Exception as e:
             logger.warning(f"Result extraction failed for {snp_name}: {str(e)}")
+            import traceback
+            logger.warning(f"Traceback: {traceback.format_exc()}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
         
@@ -783,7 +848,7 @@ class EDGEAnalysis:
                          Index: variant_id
                          Columns: chrom, pos, ref_allele, alt_allele, MAF
             grm_matrix: Optional GRM matrix from GCTA (for population structure control)
-            grm_sample_ids: DataFrame with FID and ID corresponding to GRM rows
+            grm_sample_ids: DataFrame with FID, IID, and sample_id corresponding to GRM rows
             mean_centered: If True, use mean-centered codominant model without intercept
                           (default: False)
             
@@ -801,11 +866,11 @@ class EDGEAnalysis:
         
         # Prepare GRM if provided
         aligned_grm = None
-        grm_ids = None
+        common_sample_ids = None
         if grm_matrix is not None and grm_sample_ids is not None:
             if self.verbose:
                 logger.info(f"Incorporating GRM for population structure control")
-            aligned_grm, grm_ids = self._prepare_grm_for_samples(
+            aligned_grm, common_sample_ids = self._prepare_grm_for_samples(
                 genotype_data.index,
                 grm_matrix,
                 grm_sample_ids
@@ -833,7 +898,7 @@ class EDGEAnalysis:
             # Fit codominant model with optional GRM and mean-centering
             result_df = self._fit_codominant_model(
                 het, hom, phenotype_df, outcome, covariates, 
-                aligned_grm, grm_ids, mean_centered
+                aligned_grm, common_sample_ids, mean_centered
             )
             
             if result_df.empty:
@@ -967,7 +1032,7 @@ class EDGEAnalysis:
                          Must contain: variant_id, alpha_value
                          Should contain: chrom, pos, ref_allele, alt_allele
             grm_matrix: Optional GRM matrix from GCTA (for population structure control)
-            grm_sample_ids: DataFrame with FID and IID corresponding to GRM rows
+            grm_sample_ids: DataFrame with FID, IID, and sample_id corresponding to GRM rows
             variant_info: Optional DataFrame with variant information
                          Index: variant_id
                          Columns: chrom, pos, ref_allele, alt_allele, MAF
@@ -1001,11 +1066,11 @@ class EDGEAnalysis:
         
         # Prepare GRM if provided
         aligned_grm = None
-        grm_ids = None
+        common_sample_ids = None
         if grm_matrix is not None and grm_sample_ids is not None:
             if self.verbose:
                 logger.info(f"Incorporating GRM for population structure control")
-            aligned_grm, grm_ids = self._prepare_grm_for_samples(
+            aligned_grm, common_sample_ids = self._prepare_grm_for_samples(
                 genotype_data.index,
                 grm_matrix,
                 grm_sample_ids
@@ -1043,7 +1108,7 @@ class EDGEAnalysis:
             
             # Fit EDGE model with optional GRM
             result_df = self._fit_edge_model(
-                edge_encoded, phenotype_df, outcome, covariates, aligned_grm, grm_ids
+                edge_encoded, phenotype_df, outcome, covariates, aligned_grm, common_sample_ids
             )
             
             if result_df.empty:
