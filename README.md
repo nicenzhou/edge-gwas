@@ -213,7 +213,7 @@ If you use edge-gwas, please cite:
 
 ## Support & Contributing
 
-** Documentation:** [FAQ](https://edge-gwas.readthedocs.io/en/latest/faq.html) | [Troubleshooting](https://edge-gwas.readthedocs.io/en/latest/troubleshooting.html)
+**Documentation:** [FAQ](https://edge-gwas.readthedocs.io/en/latest/faq.html) | [Troubleshooting](https://edge-gwas.readthedocs.io/en/latest/troubleshooting.html)
 
 **Questions?**
 - Code: Jiayan Zhou (jyzhou@stanford.edu)
