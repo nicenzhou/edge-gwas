@@ -8,7 +8,7 @@ All notable changes to edge-gwas will be documented in this file.
 The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`_,
 and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0.html>`_.
 
-Version 0.1.1 (2025-12-25) - Current Release
+Version 0.1.1 (2025-12-27) - Current Release
 --------------------------------------------
 
 **Status:** ⚠️ Public Testing Phase
@@ -132,6 +132,8 @@ Bug Fixes
 * Fixed GRM sample alignment when samples differ between genotype and GRM
 * Fixed ID type inconsistencies (all IDs now converted to strings)
 * Improved convergence in mixed model fitting
+
+---
 
 Version 0.1.0 (2025-12-24)
 --------------------------
