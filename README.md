@@ -144,34 +144,6 @@ where:
 
 ---
 
-## Key Features
-
-### Core Analysis
-- **Binary & continuous outcomes** with transformations (log, inverse-normal)
-- **Two-stage workflow** (train alpha → test GWAS)
-- **Cross-validation** for alpha stability
-- **Parallel processing** for speed
-
-### Population Structure
-- **PCA**: PLINK2 (exact/approx), PC-AiR (relatives), sklearn
-- **Mixed models**: GRM-based linear/logistic models
-- **Relatedness tools**: Identify and filter related samples
-
-### Data Formats
-- **PLINK** (.bed/.bim/.fam), **PLINK2** (.pgen/.pvar/.psam)
-- **VCF** (.vcf/.vcf.gz), **BGEN** (UK Biobank)
-
-### Quality Control
-- MAF, missingness, HWE filtering
-- Sample call rate filtering
-- Case/control balance checks
-
-### Visualization
-- Manhattan plots, QQ plots, alpha distributions
-- LocusZoom-compatible output
-
----
-
 ## What's New in v0.1.1
 
 **New Features:**
@@ -244,7 +216,6 @@ If you use edge-gwas, please cite:
 ** Documentation:** [FAQ](https://edge-gwas.readthedocs.io/en/latest/faq.html) | [Troubleshooting](https://edge-gwas.readthedocs.io/en/latest/troubleshooting.html)
 
 **Questions?**
-- [Full Documentation](https://edge-gwas.readthedocs.io)
 - Code: Jiayan Zhou (jyzhou@stanford.edu)
 - Research: Molly Ann Hall (molly.hall@pennmedicine.upenn.edu)
 
