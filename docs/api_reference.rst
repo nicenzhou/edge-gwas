@@ -1826,6 +1826,124 @@ Save GWAS and alpha results to files.
 
 * ``dict``: Dictionary with keys 'gwas' and 'alpha' containing file paths
 
+format_gwas_output_for_locuszoom()
+"""""""""""""""""""""""""""""""""""
+
+Format GWAS results for LocusZoom upload or general reporting.
+
+.. code-block:: python
+
+   from edge_gwas.utils import format_gwas_output_for_locuszoom
+   
+   formatted_df = format_gwas_output_for_locuszoom(
+       gwas_df,
+       include_alpha=True,
+       sort_by='pval',
+       format_for_locuszoom=False
+   )
+
+**Parameters:**
+
+* ``gwas_df`` (pandas.DataFrame): GWAS results
+* ``include_alpha`` (bool, optional): Include alpha-related columns (default: True)
+* ``sort_by`` (str, optional): Column to sort by (default: 'pval')
+* ``format_for_locuszoom`` (bool, optional): If True, format for LocusZoom upload (default: False)
+
+**Returns:**
+
+* ``pandas.DataFrame``: Formatted results
+
+  * Standard format: chrom, pos, variant_id, alpha_value, ref_allele, alt_allele, eaf, maf, coef, std_err, stat, pval, conf_int_low, conf_int_high, n_samples
+  * LocusZoom format: chrom, pos, ref, alt, pval, beta, se, eaf, alpha_value (tab-delimited, sorted by chrom and pos)
+
+**Examples:**
+
+.. code-block:: python
+
+   # Standard format for reporting
+   formatted = format_gwas_output_for_locuszoom(gwas_df, include_alpha=True)
+   
+   # LocusZoom format
+   lz_format = format_gwas_output_for_locuszoom(
+       gwas_df, 
+       include_alpha=True,
+       format_for_locuszoom=True
+   )
+
+save_for_locuszoom()
+""""""""""""""""""""
+
+Save GWAS results in LocusZoom-compatible format.
+
+.. code-block:: python
+
+   from edge_gwas.utils import save_for_locuszoom
+   
+   save_for_locuszoom(
+       gwas_df,
+       output_file='results.tsv',
+       include_alpha=True,
+       compress=True
+   )
+
+**Parameters:**
+
+* ``gwas_df`` (pandas.DataFrame): GWAS results
+* ``output_file`` (str): Output file path (will add .gz if compress=True)
+* ``include_alpha`` (bool, optional): Include alpha_value column (default: True)
+* ``compress`` (bool, optional): Compress with gzip (default: True)
+
+**Returns:**
+
+* None (saves file and prints instructions for bgzip/tabix indexing)
+
+**Example:**
+
+.. code-block:: python
+
+   save_for_locuszoom(gwas_df, 'myresults.tsv', include_alpha=True, compress=True)
+   
+   # Follow printed instructions to create tabix index:
+   # gunzip myresults.tsv.gz
+   # bgzip myresults.tsv
+   # tabix -s 1 -b 2 -e 2 myresults.tsv.gz
+
+validate_locuszoom_format()
+"""""""""""""""""""""""""""
+
+Validate GWAS results for LocusZoom compatibility.
+
+.. code-block:: python
+
+   from edge_gwas.utils import validate_locuszoom_format
+   
+   validation = validate_locuszoom_format(gwas_df)
+
+**Parameters:**
+
+* ``gwas_df`` (pandas.DataFrame): GWAS results to validate
+
+**Returns:**
+
+* ``dict``: Validation results with keys:
+
+  * ``valid`` (bool): Whether data passes validation
+  * ``errors`` (list): Critical errors that prevent upload
+  * ``warnings`` (list): Non-critical issues
+  * ``info`` (list): Summary information
+
+**Example:**
+
+.. code-block:: python
+
+   validation = validate_locuszoom_format(gwas_df)
+   
+   if not validation['valid']:
+       print("Errors:", validation['errors'])
+   if validation['warnings']:
+       print("Warnings:", validation['warnings'])
+   print("Info:", validation['info'])
+
 load_alpha_values()
 ~~~~~~~~~~~~~~~~~~~
 
@@ -2273,64 +2391,138 @@ Utilities Module (edge_gwas.utils)
    * - ``cross_validated_edge_analysis()``
      - K-fold cross-validation for EDGE
 
+I/O Handlers Module (edge_gwas.io_handlers)
+--------------------------------------------
+
+Functions for reading, writing, and formatting EDGE-GWAS results.
+
+**Function Summary:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 50 20
+
+   * - Function
+     - Purpose
+     - Output
+   * - ``download_test_files()``
+     - Download test data from GitHub
+     - Download status dict
+   * - ``save_results()``
+     - Save GWAS and alpha results
+     - File paths dict
+   * - ``load_alpha_values()``
+     - Load pre-calculated alpha values
+     - Alpha DataFrame
+   * - ``format_gwas_output_for_locuszoom()``
+     - Format results for LocusZoom or reporting
+     - Formatted DataFrame
+   * - ``save_for_locuszoom()``
+     - Save in LocusZoom-compatible format
+     - None (saves file)
+   * - ``validate_locuszoom_format()``
+     - Validate LocusZoom compatibility
+     - Validation dict
+   * - ``create_summary_report()``
+     - Generate analysis summary report
+     - Report string
+
 Complete Workflow Example
 --------------------------
 
+**Full EDGE-GWAS pipeline with population structure control:**
+
 .. code-block:: python
 
-   from edge_gwas import EDGEAnalysis
+   from edge_gwas import EDGEAnalysis, download_test_files
    from edge_gwas.utils import (
-       load_plink_data,
-       prepare_phenotype_data,
-       apply_standard_qc,
-       validate_and_align_data,
-       calculate_grm_gcta,
-       load_grm_gcta,
-       calculate_pca_plink,
-       attach_pcs_to_phenotype,
-       stratified_train_test_split
+       load_plink_data, prepare_phenotype_data,
+       filter_genotype_data, validate_and_align_data,
+       calculate_grm_gcta, load_grm_gcta,
+       calculate_pca_plink, attach_pcs_to_phenotype,
+       stratified_train_test_split, get_pc_covariate_list
    )
-   from edge_gwas.visualize import manhattan_plot, qq_plot
+   from edge_gwas.visualization import manhattan_plot, qq_plot, plot_alpha_distribution
    
-   # 1. Load data
-   geno, info = load_plink_data('data.bed', 'data.bim', 'data.fam')
-   pheno = prepare_phenotype_data(
-       'pheno.txt',
-       outcome_col='disease',
-       covariate_cols=['age', 'sex']
-   )
+   # 1. Download and load test data
+   download_test_files()
+   geno, info = load_plink_data('tests/test.bed', 'tests/test.bim', 'tests/test.fam')
+   pheno = prepare_phenotype_data('tests/test.phen', outcome_col='disease', 
+                                    covariate_cols=['age'], sample_id_col='IID')
    
-   # 2. QC and alignment
-   geno_qc, pheno_qc = apply_standard_qc(geno, pheno)
-   geno_qc, pheno_qc = validate_and_align_data(geno_qc, pheno_qc)
+   # 2. Quality control
+   geno_qc, pheno_qc = filter_genotype_data(geno, pheno, min_maf=0.01, 
+                                             max_missing_per_variant=0.05)
+   geno_qc, pheno_qc = validate_and_align_data(geno_qc, pheno_qc, 
+                                                outcome_col='disease')
    
-   # 3. Population structure
-   grm_prefix = calculate_grm_gcta('data', output_prefix='grm')
+   # 3. Population structure control
+   grm_prefix = calculate_grm_gcta('tests/test', output_prefix='grm')
    grm_matrix, grm_ids = load_grm_gcta('grm')
-   pca = calculate_pca_plink('data', n_pcs=10)
-   pheno_qc = attach_pcs_to_phenotype(pheno_qc, pca, n_pcs=10)
+   pca = calculate_pca_plink('tests/test', n_pcs=10)
+   pheno_qc = attach_pcs_to_phenotype(pheno_qc, pca, n_pcs=10, drop_na=True)
    
-   # 4. Split data
+   # 4. Train/test split
    train_g, test_g, train_p, test_p = stratified_train_test_split(
-       geno_qc, pheno_qc, outcome_col='disease', test_size=0.5
+       geno_qc, pheno_qc, outcome_col='disease', test_size=0.5, random_state=42
    )
    
-   # 5. EDGE analysis
-   edge = EDGEAnalysis(outcome_type='binary')
-   covariates = ['age', 'sex'] + [f'PC{i}' for i in range(1, 11)]
+   # 5. Run EDGE analysis
+   edge = EDGEAnalysis(outcome_type='binary', use_fast_approximation=True)
+   covariates = ['age'] + get_pc_covariate_list(10)
    
    alpha_df, gwas_df = edge.run_full_analysis(
        train_g, train_p, test_g, test_p,
        outcome='disease',
        covariates=covariates,
+       variant_info=info,
        grm_matrix=grm_matrix,
        grm_sample_ids=grm_ids,
+       use_fast_approximation=True,
        output_prefix='results/edge'
    )
    
-   # 6. Visualize
-   manhattan_plot(gwas_df, output='manhattan.png')
-   qq_plot(gwas_df, output='qq.png')
+   # 6. Visualize results
+   manhattan_plot(gwas_df, output='results/manhattan.png')
+   lambda_gc = qq_plot(gwas_df, output='results/qq.png')
+   plot_alpha_distribution(alpha_df, output='results/alpha_dist.png', xlim=(-2, 3))
+   
+   # 7. Save for LocusZoom
+   from edge_gwas.utils import save_for_locuszoom
+   save_for_locuszoom(gwas_df, 'results/locuszoom_input.tsv', compress=True)
+   
+   print(f"✓ Analysis complete!")
+   print(f"  Variants tested: {len(gwas_df)}")
+   print(f"  Significant (p<5e-8): {(gwas_df['pval'] < 5e-8).sum()}")
+   print(f"  Genomic inflation: λ = {lambda_gc:.3f}")
+
+**Minimal workflow (without population structure control):**
+
+.. code-block:: python
+
+   from edge_gwas import EDGEAnalysis, download_test_files
+   from edge_gwas.utils import load_plink_data, stratified_train_test_split
+   import pandas as pd
+   
+   # Download and load
+   download_test_files()
+   geno, _ = load_plink_data('tests/test.bed', 'tests/test.bim', 'tests/test.fam')
+   pheno = pd.read_csv('tests/test.phen', sep=' ').set_index('IID')
+   
+   # Split
+   train_g, test_g, train_p, test_p = stratified_train_test_split(
+       geno, pheno, 'disease', test_size=0.5
+   )
+   
+   # Analyze
+   edge = EDGEAnalysis(outcome_type='binary')
+   alpha_df, gwas_df = edge.run_full_analysis(
+       train_g, train_p, test_g, test_p,
+       outcome='disease',
+       covariates=['age']
+   )
+   
+   print(f"Done! Tested {len(gwas_df)} variants")
 
 Migration Guide (v0.1.0 → v0.1.1)
 ----------------------------------
@@ -2389,52 +2581,70 @@ Function Index
 **By Category:**
 
 *Core Analysis:*
-- ``EDGEAnalysis`` (class) → ``calculate_alpha()``, ``apply_alpha()``, ``run_full_analysis()``
+- ``EDGEAnalysis`` (class) → ``calculate_alpha()``, ``apply_alpha()``, ``run_full_analysis()``, ``get_skipped_snps()``
 
 *Data Loading:*
 - ``load_plink_data()``, ``load_pgen_data()``, ``load_vcf_data()``, ``load_bgen_data()``, ``prepare_phenotype_data()``
 
 *Quality Control:*
-- ``filter_genotype_data()``, ``apply_standard_qc()``, ``validate_genotype_df()``, ``validate_and_fix_encoding()``, ``validate_and_align_data()``, ``diagnose_genotype_data()``
+- ``filter_genotype_data()``, ``filter_variants_by_maf()``, ``filter_variants_by_missing()``, ``filter_variants_by_hwe()``, ``filter_samples_by_call_rate()``, ``validate_genotype_df()``, ``validate_and_fix_encoding()``, ``validate_and_align_data()``, ``check_case_control_balance()``
 
 *Population Structure:*
-- ``calculate_grm_gcta()``, ``load_grm_gcta()``, ``calculate_pca_plink()``, ``attach_pcs_to_phenotype()``, ``identify_related_samples()``, ``filter_related_samples()``
+- ``calculate_grm_gcta()``, ``load_grm_gcta()``, ``calculate_pca_plink()``, ``calculate_pca_pcair()``, ``calculate_pca_sklearn()``, ``attach_pcs_to_phenotype()``, ``get_pc_covariate_list()``, ``identify_related_samples()``, ``filter_related_samples()``
+
+*Data Processing:*
+- ``stratified_train_test_split()``, ``impute_covariates()``, ``calculate_hwe_pvalues()``
 
 *Statistical:*
-- ``calculate_genomic_inflation()``, ``additive_gwas()``, ``cross_validated_edge_analysis()``
+- ``calculate_genomic_inflation()``, ``additive_gwas()``, ``cross_validated_edge_analysis()``, ``merge_alpha_with_gwas()``
 
 *Visualization:*
 - ``manhattan_plot()``, ``qq_plot()``, ``plot_alpha_distribution()``
+
+*I/O and Formatting:*
+- ``download_test_files()``, ``save_results()``, ``load_alpha_values()``, ``format_gwas_output_for_locuszoom()``, ``save_for_locuszoom()``, ``validate_locuszoom_format()``, ``create_summary_report()``
 
 Quick Function Finder
 ----------------------
 
 **"I want to..."**
 
+* **Get started with test data**:
+
+  * Download test files: ``download_test_files()``
+
 * **Load genetic data**:
 
   * PLINK binary (.bed/.bim/.fam): ``load_plink_data()``
   * PLINK2 (.pgen/.pvar/.psam): ``load_pgen_data()``
-  * BGEN: ``load_bgen_data()``
   * VCF: ``load_vcf_data()``
-
-* **Control for population structure**:
-
-  * Calculate GRM: ``calculate_grm_gcta()``
-  * Load GRM: ``load_grm_gcta()``
-  * Calculate PCs (unrelated): ``calculate_pca_plink()``
-  * Calculate PCs (related): ``calculate_pca_pcair()``
-  * Add PCs to phenotype: ``attach_pcs_to_phenotype()``
+  * BGEN: ``load_bgen_data()``
+  * Phenotype: ``prepare_phenotype_data()``
 
 * **Quality control**:
 
+  * Comprehensive QC: ``filter_genotype_data()``
   * Filter by MAF: ``filter_variants_by_maf()``
   * Filter by missingness: ``filter_variants_by_missing()``
   * Filter by HWE: ``filter_variants_by_hwe()``
   * Filter samples: ``filter_samples_by_call_rate()``
   * Check case/control balance: ``check_case_control_balance()``
+  * Validate data: ``validate_and_align_data()``
+
+* **Control for population structure**:
+
+  * Calculate GRM: ``calculate_grm_gcta()``
+  * Load GRM: ``load_grm_gcta()``
+  * Calculate PCs (standard): ``calculate_pca_plink()``
+  * Calculate PCs (related samples): ``calculate_pca_pcair()``
+  * Add PCs to phenotype: ``attach_pcs_to_phenotype()``
   * Find related samples: ``identify_related_samples()``
   * Remove related samples: ``filter_related_samples()``
+
+* **Prepare data for analysis**:
+
+  * Split train/test: ``stratified_train_test_split()``
+  * Impute missing covariates: ``impute_covariates()``
 
 * **Run EDGE analysis**:
 
@@ -2442,6 +2652,7 @@ Quick Function Finder
   * Apply alpha: ``apply_alpha()``
   * Full workflow: ``run_full_analysis()``
   * Cross-validation: ``cross_validated_edge_analysis()``
+  * Check failed SNPs: ``get_skipped_snps()``
 
 * **Compare with standard GWAS**:
 
@@ -2453,11 +2664,19 @@ Quick Function Finder
   * QQ plot: ``qq_plot()``
   * Alpha distribution: ``plot_alpha_distribution()``
 
-* **Save/load results**:
+* **Save and format results**:
 
   * Save results: ``save_results()``
   * Load alpha values: ``load_alpha_values()``
-  * Create summary: ``create_summary_report()``
+  * Format for LocusZoom: ``format_gwas_output_for_locuszoom()``
+  * Save for LocusZoom: ``save_for_locuszoom()``
+  * Validate LocusZoom format: ``validate_locuszoom_format()``
+  * Create summary report: ``create_summary_report()``
+
+* **Statistical utilities**:
+
+  * Calculate genomic inflation: ``calculate_genomic_inflation()``
+  * Merge alpha with GWAS: ``merge_alpha_with_gwas()``
 
 See Also
 --------
