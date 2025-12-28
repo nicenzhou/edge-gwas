@@ -142,11 +142,11 @@ EDGE uses flexible encoding based on separate heterozygous and homozygous effect
 
 **Regression Model:**
 
-$$E(Y | G, COV) = \beta_0 + \beta_{Het} \cdot G_{Het} + \beta_{Hom} \cdot G_{Hom} + \sum_{i} \beta_{cov_i} \cdot COV_i$$
+$$E(Y | G, COV) = \beta_0 + \beta_{Het} \cdot G_{Het} + \beta_{HA} \cdot G_{HA} + \sum_{i} \beta_{cov_i} \cdot COV_i$$
 
 **Encoding Parameter:**
 
-$$\alpha = \frac{\beta_{Het}}{\beta_{Hom}}$$
+$$\alpha = \frac{\beta_{Het}}{\beta_{HA}}$$
 
 **Interpretation:**
 - **α ≈ 0**: Recessive (only homozygotes affected)
