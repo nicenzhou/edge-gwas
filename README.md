@@ -127,8 +127,8 @@ where $G_{EDGE}$ is the EDGE-encoded genotype:
 
 $$G_{EDGE} = \begin{cases} 
 0 & \text{if } G = 0 \text{ (REF/REF - major/major)} \\
-\alpha & \text{if } G = 1 \text{ (REF/ALT - major/minor)} \\
-1 & \text{if } G = 2 \text{ (ALT/ALT - minor/minor)}
+\alpha & \text{if } G = α \text{ (REF/ALT - major/minor)} \\
+1 & \text{if } G = 1 \text{ (ALT/ALT - minor/minor)}
 \end{cases}$$
 
 **Interpretation of α** (assuming ALT is the minor/risk allele):
