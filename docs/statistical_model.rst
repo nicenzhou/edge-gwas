@@ -57,7 +57,7 @@ Where:
      - Interpretation
    * - 0/0 (Ref/Ref)
      - 0
-     - 1
+     - 0
      - Reference homozygote
    * - 0/1 (Ref/Alt)
      - 1
@@ -65,7 +65,7 @@ Where:
      - Heterozygote
    * - 1/1 (Alt/Alt)
      - 0
-     - 0
+     - 1
      - Alternate homozygote
 
 Encoding Parameter
@@ -208,9 +208,9 @@ For each SNP in the test dataset:
 
 2. Encode genotypes using Equation 3:
    
-   * 0/0 → 1
+   * 0/0 → 0
    * 0/1 → α
-   * 1/1 → 0
+   * 1/1 → 1
 
 3. Fit association model (Equation 4)
 
