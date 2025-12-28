@@ -190,17 +190,25 @@ class EDGEAnalysis:
         Args:
             sample_ids: Sample IDs from the analysis data
             grm_matrix: Full GRM matrix from GCTA
-            grm_sample_ids: DataFrame with columns FID, IID, sample_id from GRM
+            grm_sample_ids: DataFrame with FID, IID, and optionally sample_id from GRM
                 
         Returns:
             Tuple of (aligned_grm, common_sample_ids)
         """
-        # Use sample_id column from grm_sample_ids
-        if 'sample_id' not in grm_sample_ids.columns:
-            raise ValueError("grm_sample_ids must contain 'sample_id' column")
+        # Determine which column to use for sample IDs
+        if 'sample_id' in grm_sample_ids.columns:
+            id_column = 'sample_id'
+            if self.verbose:
+                logger.info("Using 'sample_id' column from grm_sample_ids")
+        elif 'IID' in grm_sample_ids.columns:
+            id_column = 'IID'
+            if self.verbose:
+                logger.info("Using 'IID' column from grm_sample_ids (sample_id not found)")
+        else:
+            raise ValueError("grm_sample_ids must contain either 'sample_id' or 'IID' column")
         
         # Convert to string for consistent matching
-        grm_sample_id_list = grm_sample_ids['sample_id'].astype(str).tolist()
+        grm_sample_id_list = grm_sample_ids[id_column].astype(str).tolist()
         sample_ids_str = sample_ids.astype(str).tolist()
         
         # Find common samples maintaining order from sample_ids
