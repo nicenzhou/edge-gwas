@@ -506,56 +506,101 @@ class EDGEAnalysis:
         
         # Apply GRM if provided
         if grm_matrix is not None and grm_sample_ids is not None:
-            # Further subset GRM to samples in current analysis (after merging and dropping NAs)
-            # The grm_matrix passed in is already aligned to genotype samples
-            # But we may have fewer samples after merging with phenotypes
-            grm_sample_list = list(grm_sample_ids)
-            merged_sample_list = merged_df.index.astype(str).tolist()
+            # Match samples between merged_df and GRM by sample ID
+            # Convert to string for consistent matching
+            grm_sample_list = [str(s) for s in grm_sample_ids]
+            merged_sample_list = [str(s) for s in merged_df.index]
             
-            sample_indices = [grm_sample_list.index(s) for s in merged_sample_list if s in grm_sample_list]
+            # Find common samples and their indices in both lists
+            common_samples = []
+            grm_indices = []
+            merged_indices = []
             
-            if len(sample_indices) == 0:
+            for i, sample in enumerate(merged_sample_list):
+                if sample in grm_sample_list:
+                    common_samples.append(sample)
+                    merged_indices.append(i)
+                    grm_indices.append(grm_sample_list.index(sample))
+            
+            if len(common_samples) == 0:
                 logger.warning(f"No samples remain after GRM alignment for {snp_name}")
                 self.skipped_snps.append(snp_name)
                 return pd.DataFrame()
             
-            # Subset the already-aligned GRM to current samples
-            current_grm = grm_matrix[np.ix_(sample_indices, sample_indices)]
+            # Subset merged_df to common samples (maintaining order)
+            y_subset = y.iloc[merged_indices]
+            X_subset = X.iloc[merged_indices]
+            
+            # Subset the already-aligned GRM to common samples
+            current_grm = grm_matrix[np.ix_(grm_indices, grm_indices)]
             
             if self.outcome_type == 'continuous' or mean_centered:
                 # Transform data for linear mixed model
                 # (Use linear model for mean-centered binary outcome too)
                 try:
-                    y_transformed, X_transformed = self._transform_with_grm_linear(y, X, current_grm)
+                    y_transformed, X_transformed = self._transform_with_grm_linear(
+                        y_subset, X_subset, current_grm
+                    )
                     
                     # Fit OLS on transformed data
                     model = sm.OLS(y_transformed, X_transformed)
                     result = model.fit()
                     
-                    # Extract using integer indices
+                    # Extract using integer indices - handle both pandas and numpy
                     conf_int_df = result.conf_int()
+                    
+                    # Handle both pandas Series and numpy array
+                    if hasattr(result.params, 'iloc'):
+                        coef_het = result.params.iloc[het_idx]
+                        coef_hom = result.params.iloc[hom_idx]
+                        std_err_het = result.bse.iloc[het_idx]
+                        std_err_hom = result.bse.iloc[hom_idx]
+                        stat_het = result.tvalues.iloc[het_idx]
+                        stat_hom = result.tvalues.iloc[hom_idx]
+                        pval_het = result.pvalues.iloc[het_idx]
+                        pval_hom = result.pvalues.iloc[hom_idx]
+                    else:
+                        coef_het = result.params[het_idx]
+                        coef_hom = result.params[hom_idx]
+                        std_err_het = result.bse[het_idx]
+                        std_err_hom = result.bse[hom_idx]
+                        stat_het = result.tvalues[het_idx]
+                        stat_hom = result.tvalues[hom_idx]
+                        pval_het = result.pvalues[het_idx]
+                        pval_hom = result.pvalues[hom_idx]
+                    
+                    if hasattr(conf_int_df, 'iloc'):
+                        conf_int_low_het = conf_int_df.iloc[het_idx, 0]
+                        conf_int_high_het = conf_int_df.iloc[het_idx, 1]
+                        conf_int_low_hom = conf_int_df.iloc[hom_idx, 0]
+                        conf_int_high_hom = conf_int_df.iloc[hom_idx, 1]
+                    else:
+                        conf_int_low_het = conf_int_df[het_idx, 0]
+                        conf_int_high_het = conf_int_df[het_idx, 1]
+                        conf_int_low_hom = conf_int_df[hom_idx, 0]
+                        conf_int_high_hom = conf_int_df[hom_idx, 1]
                     
                     result_data = {
                         'snp': [snp_name],
-                        'coef_het': [result.params.iloc[het_idx]],
-                        'coef_hom': [result.params.iloc[hom_idx]],
-                        'std_err_het': [result.bse.iloc[het_idx]],
-                        'std_err_hom': [result.bse.iloc[hom_idx]],
-                        'stat_het': [result.tvalues.iloc[het_idx]],
-                        'stat_hom': [result.tvalues.iloc[hom_idx]],
-                        'pval_het': [result.pvalues.iloc[het_idx]],
-                        'pval_hom': [result.pvalues.iloc[hom_idx]],
-                        'conf_int_low_het': [conf_int_df.iloc[het_idx, 0]],
-                        'conf_int_high_het': [conf_int_df.iloc[het_idx, 1]],
-                        'conf_int_low_hom': [conf_int_df.iloc[hom_idx, 0]],
-                        'conf_int_high_hom': [conf_int_df.iloc[hom_idx, 1]],
-                        'n_samples': [len(y)]
+                        'coef_het': [coef_het],
+                        'coef_hom': [coef_hom],
+                        'std_err_het': [std_err_het],
+                        'std_err_hom': [std_err_hom],
+                        'stat_het': [stat_het],
+                        'stat_hom': [stat_hom],
+                        'pval_het': [pval_het],
+                        'pval_hom': [pval_hom],
+                        'conf_int_low_het': [conf_int_low_het],
+                        'conf_int_high_het': [conf_int_high_het],
+                        'conf_int_low_hom': [conf_int_low_hom],
+                        'conf_int_high_hom': [conf_int_high_hom],
+                        'n_samples': [len(y_subset)]
                     }
                     
                     # Add n_cases and n_controls for binary outcomes
                     if self.outcome_type == 'binary':
-                        result_data['n_cases'] = [n_cases]
-                        result_data['n_controls'] = [n_controls]
+                        result_data['n_cases'] = [int(y_subset.sum())]
+                        result_data['n_controls'] = [int(len(y_subset) - y_subset.sum())]
                     
                     return pd.DataFrame(result_data)
                     
@@ -570,7 +615,7 @@ class EDGEAnalysis:
                 # Fit logistic mixed model
                 try:
                     result_dict = self._fit_logistic_mixed_model(
-                        y.values, X.values, current_grm
+                        y_subset.values, X_subset.values, current_grm
                     )
                     
                     # Extract results directly from dict using indices
@@ -588,13 +633,13 @@ class EDGEAnalysis:
                         'conf_int_high_het': [result_dict['conf_int_upper'][het_idx]],
                         'conf_int_low_hom': [result_dict['conf_int_lower'][hom_idx]],
                         'conf_int_high_hom': [result_dict['conf_int_upper'][hom_idx]],
-                        'n_samples': [len(y)]
+                        'n_samples': [len(y_subset)]
                     }
                     
                     # Add n_cases and n_controls for binary outcomes
                     if self.outcome_type == 'binary':
-                        result_data['n_cases'] = [n_cases]
-                        result_data['n_controls'] = [n_controls]
+                        result_data['n_cases'] = [int(y_subset.sum())]
+                        result_data['n_controls'] = [int(len(y_subset) - y_subset.sum())]
                     
                     return pd.DataFrame(result_data)
                     
@@ -627,20 +672,51 @@ class EDGEAnalysis:
             # Get confidence intervals
             conf_int_df = result.conf_int()
             
+            # Handle both pandas Series and numpy array
+            if hasattr(result.params, 'iloc'):
+                coef_het = result.params.iloc[het_idx]
+                coef_hom = result.params.iloc[hom_idx]
+                std_err_het = result.bse.iloc[het_idx]
+                std_err_hom = result.bse.iloc[hom_idx]
+                stat_het = result.tvalues.iloc[het_idx]
+                stat_hom = result.tvalues.iloc[hom_idx]
+                pval_het = result.pvalues.iloc[het_idx]
+                pval_hom = result.pvalues.iloc[hom_idx]
+            else:
+                coef_het = result.params[het_idx]
+                coef_hom = result.params[hom_idx]
+                std_err_het = result.bse[het_idx]
+                std_err_hom = result.bse[hom_idx]
+                stat_het = result.tvalues[het_idx]
+                stat_hom = result.tvalues[hom_idx]
+                pval_het = result.pvalues[het_idx]
+                pval_hom = result.pvalues[hom_idx]
+            
+            if hasattr(conf_int_df, 'iloc'):
+                conf_int_low_het = conf_int_df.iloc[het_idx, 0]
+                conf_int_high_het = conf_int_df.iloc[het_idx, 1]
+                conf_int_low_hom = conf_int_df.iloc[hom_idx, 0]
+                conf_int_high_hom = conf_int_df.iloc[hom_idx, 1]
+            else:
+                conf_int_low_het = conf_int_df[het_idx, 0]
+                conf_int_high_het = conf_int_df[het_idx, 1]
+                conf_int_low_hom = conf_int_df[hom_idx, 0]
+                conf_int_high_hom = conf_int_df[hom_idx, 1]
+            
             result_data = {
                 'snp': [snp_name],
-                'coef_het': [result.params.iloc[het_idx]],
-                'coef_hom': [result.params.iloc[hom_idx]],
-                'std_err_het': [result.bse.iloc[het_idx]],
-                'std_err_hom': [result.bse.iloc[hom_idx]],
-                'stat_het': [result.tvalues.iloc[het_idx]],
-                'stat_hom': [result.tvalues.iloc[hom_idx]],
-                'pval_het': [result.pvalues.iloc[het_idx]],
-                'pval_hom': [result.pvalues.iloc[hom_idx]],
-                'conf_int_low_het': [conf_int_df.iloc[het_idx, 0]],
-                'conf_int_high_het': [conf_int_df.iloc[het_idx, 1]],
-                'conf_int_low_hom': [conf_int_df.iloc[hom_idx, 0]],
-                'conf_int_high_hom': [conf_int_df.iloc[hom_idx, 1]],
+                'coef_het': [coef_het],
+                'coef_hom': [coef_hom],
+                'std_err_het': [std_err_het],
+                'std_err_hom': [std_err_hom],
+                'stat_het': [stat_het],
+                'stat_hom': [stat_hom],
+                'pval_het': [pval_het],
+                'pval_hom': [pval_hom],
+                'conf_int_low_het': [conf_int_low_het],
+                'conf_int_high_het': [conf_int_high_het],
+                'conf_int_low_hom': [conf_int_low_hom],
+                'conf_int_high_hom': [conf_int_high_hom],
                 'n_samples': [len(y)]
             }
             
@@ -657,7 +733,6 @@ class EDGEAnalysis:
             logger.warning(f"Traceback: {traceback.format_exc()}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
-
     
     def _fit_edge_model(
         self,
@@ -716,33 +791,94 @@ class EDGEAnalysis:
         # Add constant
         X = sm.add_constant(X)
         
+        # Find the index of the SNP column
+        snp_idx = X.columns.tolist().index(snp_name)
+        
         # Apply GRM if provided
         if grm_matrix is not None and grm_sample_ids is not None:
-            # Further subset GRM to samples in current analysis
-            # Convert grm_sample_ids to list for indexing
-            grm_sample_list = list(grm_sample_ids)
-            merged_sample_list = merged_df.index.astype(str).tolist()
+            # Match samples between merged_df and GRM by sample ID
+            # Convert to string for consistent matching
+            grm_sample_list = [str(s) for s in grm_sample_ids]
+            merged_sample_list = [str(s) for s in merged_df.index]
             
-            sample_indices = [grm_sample_list.index(s) for s in merged_sample_list if s in grm_sample_list]
+            # Find common samples and their indices in both lists
+            common_samples = []
+            grm_indices = []
+            merged_indices = []
             
-            if len(sample_indices) == 0:
+            for i, sample in enumerate(merged_sample_list):
+                if sample in grm_sample_list:
+                    common_samples.append(sample)
+                    merged_indices.append(i)
+                    grm_indices.append(grm_sample_list.index(sample))
+            
+            if len(common_samples) == 0:
                 logger.warning(f"No samples remain after GRM alignment for {snp_name}")
                 self.skipped_snps.append(snp_name)
                 return pd.DataFrame()
             
-            # Subset the already-aligned GRM to current samples
-            current_grm = grm_matrix[np.ix_(sample_indices, sample_indices)]
+            # Subset merged_df to common samples (maintaining order)
+            y_subset = y.iloc[merged_indices]
+            X_subset = X.iloc[merged_indices]
+            
+            # Subset the already-aligned GRM to common samples
+            current_grm = grm_matrix[np.ix_(grm_indices, grm_indices)]
             
             if self.outcome_type == 'continuous':
                 # Transform data for linear mixed model
                 try:
-                    y_transformed, X_transformed = self._transform_with_grm_linear(y, X, current_grm)
+                    y_transformed, X_transformed = self._transform_with_grm_linear(
+                        y_subset, X_subset, current_grm
+                    )
                     
                     # Fit OLS on transformed data
                     model = sm.OLS(y_transformed, X_transformed)
                     result = model.fit()
+                    
+                    # Extract using integer indices - handle both pandas and numpy
+                    conf_int_df = result.conf_int()
+                    
+                    # Handle both pandas Series and numpy array
+                    if hasattr(result.params, 'iloc'):
+                        coef = result.params.iloc[snp_idx]
+                        std_err = result.bse.iloc[snp_idx]
+                        stat = result.tvalues.iloc[snp_idx]
+                        pval = result.pvalues.iloc[snp_idx]
+                    else:
+                        coef = result.params[snp_idx]
+                        std_err = result.bse[snp_idx]
+                        stat = result.tvalues[snp_idx]
+                        pval = result.pvalues[snp_idx]
+                    
+                    if hasattr(conf_int_df, 'iloc'):
+                        conf_int_low = conf_int_df.iloc[snp_idx, 0]
+                        conf_int_high = conf_int_df.iloc[snp_idx, 1]
+                    else:
+                        conf_int_low = conf_int_df[snp_idx, 0]
+                        conf_int_high = conf_int_df[snp_idx, 1]
+                    
+                    result_data = {
+                        'snp': [snp_name],
+                        'coef': [coef],
+                        'std_err': [std_err],
+                        'stat': [stat],
+                        'pval': [pval],
+                        'conf_int_low': [conf_int_low],
+                        'conf_int_high': [conf_int_high],
+                        'n_samples': [len(y_subset)]
+                    }
+                    
+                    # Add n_cases and n_controls for binary outcomes
+                    if self.outcome_type == 'binary':
+                        result_data['n_cases'] = [int(y_subset.sum())]
+                        result_data['n_controls'] = [int(len(y_subset) - y_subset.sum())]
+                    
+                    return pd.DataFrame(result_data)
+                    
                 except Exception as e:
                     logger.warning(f"GRM-based linear model fitting failed for {snp_name}: {str(e)}")
+                    import traceback
+                    logger.warning(f"Traceback: {traceback.format_exc()}")
                     self.skipped_snps.append(snp_name)
                     return pd.DataFrame()
                     
@@ -750,13 +886,10 @@ class EDGEAnalysis:
                 # Fit logistic mixed model
                 try:
                     result_dict = self._fit_logistic_mixed_model(
-                        y.values, X.values, current_grm
+                        y_subset.values, X_subset.values, current_grm
                     )
                     
                     # Extract results directly using indices
-                    # Find index of snp_name in X.columns
-                    snp_idx = X.columns.tolist().index(snp_name)
-                    
                     result_data = {
                         'snp': [snp_name],
                         'coef': [result_dict['params'][snp_idx]],
@@ -765,13 +898,13 @@ class EDGEAnalysis:
                         'pval': [result_dict['pvalues'][snp_idx]],
                         'conf_int_low': [result_dict['conf_int_lower'][snp_idx]],
                         'conf_int_high': [result_dict['conf_int_upper'][snp_idx]],
-                        'n_samples': [len(y)]
+                        'n_samples': [len(y_subset)]
                     }
                     
                     # Add n_cases and n_controls for binary outcomes
                     if self.outcome_type == 'binary':
-                        result_data['n_cases'] = [n_cases]
-                        result_data['n_controls'] = [n_controls]
+                        result_data['n_cases'] = [int(y_subset.sum())]
+                        result_data['n_controls'] = [int(len(y_subset) - y_subset.sum())]
                     
                     return pd.DataFrame(result_data)
                     
@@ -794,23 +927,43 @@ class EDGEAnalysis:
                 result = model.fit()
         except Exception as e:
             logger.warning(f"Model fitting failed for {snp_name}: {str(e)}")
+            import traceback
+            logger.warning(f"Traceback: {traceback.format_exc()}")
             self.skipped_snps.append(snp_name)
             return pd.DataFrame()
         
         # Extract results using column name for standard models
         try:
-            # Find index of snp_name
-            snp_idx = X.columns.tolist().index(snp_name)
+            # Get confidence intervals
             conf_int_df = result.conf_int()
+            
+            # Handle both pandas Series and numpy array
+            if hasattr(result.params, 'iloc'):
+                coef = result.params.iloc[snp_idx]
+                std_err = result.bse.iloc[snp_idx]
+                stat = result.tvalues.iloc[snp_idx]
+                pval = result.pvalues.iloc[snp_idx]
+            else:
+                coef = result.params[snp_idx]
+                std_err = result.bse[snp_idx]
+                stat = result.tvalues[snp_idx]
+                pval = result.pvalues[snp_idx]
+            
+            if hasattr(conf_int_df, 'iloc'):
+                conf_int_low = conf_int_df.iloc[snp_idx, 0]
+                conf_int_high = conf_int_df.iloc[snp_idx, 1]
+            else:
+                conf_int_low = conf_int_df[snp_idx, 0]
+                conf_int_high = conf_int_df[snp_idx, 1]
             
             result_dict = {
                 'snp': [snp_name],
-                'coef': [result.params.iloc[snp_idx]],
-                'std_err': [result.bse.iloc[snp_idx]],
-                'stat': [result.tvalues.iloc[snp_idx]],
-                'pval': [result.pvalues.iloc[snp_idx]],
-                'conf_int_low': [conf_int_df.iloc[snp_idx, 0]],
-                'conf_int_high': [conf_int_df.iloc[snp_idx, 1]],
+                'coef': [coef],
+                'std_err': [std_err],
+                'stat': [stat],
+                'pval': [pval],
+                'conf_int_low': [conf_int_low],
+                'conf_int_high': [conf_int_high],
                 'n_samples': [len(y)]
             }
             
