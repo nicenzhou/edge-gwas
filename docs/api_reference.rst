@@ -132,7 +132,7 @@ Calculate encoding parameters from training data.
        variant_info=None,
        grm_matrix=None,        # NEW in v0.1.1
        grm_sample_ids=None,    # NEW in v0.1.1
-       mean_centered=False     # NEW in v0.1.2
+       mean_centered=False     # NEW in v0.1.1
    )
 
 **Parameters:**
@@ -144,7 +144,7 @@ Calculate encoding parameters from training data.
 * ``variant_info`` (pandas.DataFrame, optional): Variant information (variant_id, chr, pos, ref_allele, alt_allele)
 * ``grm_matrix`` (numpy.ndarray, optional): **NEW in v0.1.1** - GRM matrix for population structure control
 * ``grm_sample_ids`` (pandas.DataFrame, optional): **NEW in v0.1.1** - Sample IDs corresponding to GRM
-* ``mean_centered`` (bool, optional): **NEW in v0.1.2** - Use mean-centered model without intercept (default: False)
+* ``mean_centered`` (bool, optional): **NEW in v0.1.1** - Use mean-centered model without intercept (default: False)
 
 **Returns:**
 
@@ -247,55 +247,51 @@ Complete two-stage EDGE analysis.
        variant_info=None,
        grm_matrix=None,        # NEW in v0.1.1
        grm_sample_ids=None,    # NEW in v0.1.1
+       mean_centered=False,    # NEW in v0.1.1
        output_prefix=None
    )
 
 **Parameters:**
 
-* ``train_genotype`` (pandas.DataFrame): Training genotype data
-* ``train_phenotype`` (pandas.DataFrame): Training phenotype data
-* ``test_genotype`` (pandas.DataFrame): Test genotype data
-* ``test_phenotype`` (pandas.DataFrame): Test phenotype data
+* ``train_genotype/test_genotype`` (pandas.DataFrame): Training/test genotype data
+* ``train_phenotype/test_phenotype`` (pandas.DataFrame): Training/test phenotype data
 * ``outcome`` (str): Outcome column name
 * ``covariates`` (list): Covariate column names
 * ``variant_info`` (pandas.DataFrame, optional): Variant information
-* ``grm_matrix`` (numpy.ndarray, optional): **NEW in v0.1.1** - GRM for both training and testing
+* ``grm_matrix`` (numpy.ndarray, optional): **NEW in v0.1.1** - GRM for population structure control
 * ``grm_sample_ids`` (pandas.DataFrame, optional): **NEW in v0.1.1** - Sample IDs for GRM
+* ``mean_centered`` (bool, optional): **NEW in v0.1.1** - Use mean-centered model (default: False)
 * ``output_prefix`` (str, optional): Prefix for output files
 
 **Returns:**
 
 * ``tuple``: (alpha_df, gwas_df)
 
-**Example with outcome transformation and GRM:**
+**Examples:**
 
 .. code-block:: python
 
-   from edge_gwas import EDGEAnalysis
-   from edge_gwas.utils import load_grm_gcta, calculate_pca_plink, attach_pcs_to_phenotype
-   
-   # Calculate PCA
-   pca_df = calculate_pca_plink('genotypes', n_pcs=10)
-   train_pheno = attach_pcs_to_phenotype(train_pheno, pca_df, n_pcs=10)
-   test_pheno = attach_pcs_to_phenotype(test_pheno, pca_df, n_pcs=10)
-   
-   # Load GRM
-   grm_matrix, grm_ids = load_grm_gcta('grm_prefix')
-   
-   # Initialize EDGE with outcome transformation
-   edge = EDGEAnalysis(
-       outcome_type='continuous',
-       outcome_transform='rank_inverse_normal'
-   )
-   
-   # Run full analysis
+   # Basic usage
    alpha_df, gwas_df = edge.run_full_analysis(
        train_geno, train_pheno,
        test_geno, test_pheno,
        outcome='trait',
-       covariates=['age', 'sex'] + [f'PC{i}' for i in range(1, 11)],
+       covariates=['age', 'sex'],
+       output_prefix='results/edge'
+   )
+   
+   # With GRM and mean-centered model
+   from edge_gwas.utils import load_grm_gcta
+   grm_matrix, grm_ids = load_grm_gcta('grm_prefix')
+   
+   alpha_df, gwas_df = edge.run_full_analysis(
+       train_geno, train_pheno,
+       test_geno, test_pheno,
+       outcome='trait',
+       covariates=['age', 'sex'],
        grm_matrix=grm_matrix,
        grm_sample_ids=grm_ids,
+       mean_centered=True,
        output_prefix='results/edge'
    )
 
