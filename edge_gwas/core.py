@@ -1183,6 +1183,7 @@ class EDGEAnalysis:
         variant_info: Optional[pd.DataFrame] = None,
         grm_matrix: Optional[np.ndarray] = None,
         grm_sample_ids: Optional[pd.DataFrame] = None,
+        mean_centered: bool = False,
         output_prefix: Optional[str] = None
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
@@ -1199,6 +1200,7 @@ class EDGEAnalysis:
             variant_info: Optional variant information
             grm_matrix: Optional GRM matrix from GCTA
             grm_sample_ids: Optional sample IDs for GRM
+            mean_centered: If True, use mean-centered model without intercept (default: False)
             output_prefix: Optional prefix for output files
             
         Returns:
@@ -1208,6 +1210,9 @@ class EDGEAnalysis:
         
         if self.outcome_transform:
             logger.info(f"Outcome transformation: {self.outcome_transform}")
+        
+        if mean_centered:
+            logger.info("Using mean-centered codominant model (no intercept)")
         
         logger.info(f"OLS optimization method: {self.ols_method}")
         
@@ -1220,7 +1225,8 @@ class EDGEAnalysis:
             covariates,
             variant_info,
             grm_matrix,
-            grm_sample_ids
+            grm_sample_ids,
+            mean_centered
         )
         
         # Save alpha values if output prefix provided
