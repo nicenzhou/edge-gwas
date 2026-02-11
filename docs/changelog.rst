@@ -8,8 +8,29 @@ All notable changes to edge-gwas will be documented in this file.
 The format is based on `Keep a Changelog <https://keepachangelog.com/en/1.0.0/>`_,
 and this project adheres to `Semantic Versioning <https://semver.org/spec/v2.0.0.html>`_.
 
-Version 0.1.1 (2025-12-27) - Current Release
---------------------------------------------
+Version 0.1.2 (2026-02-10)
+--------------------------
+
+**Bug fixes and improvements**
+
+Fixed
+^^^^^
+
+* **io_handlers:** Added public API alias ``format_gwas_output`` for ``format_gwas_output_for_locuszoom`` so that ``save_for_locuszoom()`` and package exports work correctly.
+* **io_handlers:** ``create_summary_report()`` now works: ``calculate_genomic_inflation`` is implemented in ``utils`` and used for the report.
+* **utils:** Added ``calculate_genomic_inflation(pvals)`` to compute genomic inflation factor (λ) from GWAS p-values; exported in package ``__init__.py``.
+* **core:** Replaced bare ``except:`` with ``except Exception`` or ``except linalg.LinAlgError`` for clearer error handling.
+* **io_handlers:** Replaced bare ``except:`` in ``load_alpha_values()`` with ``except Exception``.
+* **setup.py:** Use path relative to ``setup.py`` for ``requirements.txt`` and ``README.md`` so installs work from any working directory. Updated author/url to Jiayan Zhou and https://github.com/nicenzhou/edge-gwas.
+
+Changed
+^^^^^^^
+
+* Package version set to 0.1.2 in ``setup.py`` and ``edge_gwas/__init__.py``.
+
+
+Version 0.1.1 (2025-12-27)
+--------------------------
 
 **Status:** ⚠️ Public Testing Phase
 

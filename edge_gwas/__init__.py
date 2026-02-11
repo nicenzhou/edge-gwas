@@ -2,7 +2,7 @@
 EDGE-GWAS: Encoding for Detecting Genetic Effects in GWAS
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __author__ = "Jiayan Zhou"
 __email__ = "jyzhou@stanford.edu"
 
@@ -32,6 +32,7 @@ from .utils import (
     get_pc_covariate_list,
     identify_related_samples,
     filter_related_samples,
+    calculate_genomic_inflation,
 )
 
 # Import IO handler functions
@@ -87,6 +88,7 @@ __all__ = [
     'get_pc_covariate_list',
     'identify_related_samples',
     'filter_related_samples',
+    'calculate_genomic_inflation',
     
     # Visualization
     'manhattan_plot',

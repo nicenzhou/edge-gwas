@@ -11,7 +11,7 @@ import tarfile
 import shutil
 from pathlib import Path
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 
 class PostInstallCommand(install):
     """Post-installation for installation mode."""
@@ -269,7 +269,8 @@ cat("\\nR packages installation complete!\\n")
 
 def read_requirements():
     """Read requirements from requirements.txt."""
-    with open('requirements.txt') as f:
+    req_path = Path(__file__).parent / 'requirements.txt'
+    with open(req_path) as f:
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
 
@@ -277,11 +278,11 @@ setup(
     name='edge-gwas',
     version=VERSION,
     description='EDGE: Encoding for Detecting Genetic Effects in GWAS',
-    long_description=open('README.md').read(),
+    long_description=open(Path(__file__).parent / 'README.md', encoding='utf-8').read(),
     long_description_content_type='text/markdown',
-    author='Your Name',
-    author_email='your.email@example.com',
-    url='https://github.com/yourusername/edge-gwas',
+    author='Jiayan Zhou',
+    author_email='jyzhou@stanford.edu',
+    url='https://github.com/nicenzhou/edge-gwas',
     packages=find_packages(),
     install_requires=read_requirements(),
     python_requires='>=3.7',

@@ -430,7 +430,7 @@ class EDGEAnalysis:
             init_model = sm.Logit(y, X)
             init_result = init_model.fit(disp=False, maxiter=100)
             beta = init_result.params.values
-        except:
+        except Exception:
             beta = np.zeros(p)
             beta[0] = np.log(y.mean() / (1 - y.mean() + 1e-10))
         
@@ -442,7 +442,7 @@ class EDGEAnalysis:
             # Cholesky decomposition
             L = linalg.cholesky(Sigma, lower=True)
             Sigma_inv = linalg.cho_solve((L, True), np.eye(n))
-        except:
+        except linalg.LinAlgError:
             # Fallback to pseudo-inverse if singular
             logger.warning("Singular GRM, using pseudo-inverse")
             Sigma_inv = linalg.pinv(Sigma)
@@ -506,7 +506,7 @@ class EDGEAnalysis:
             ci_lower = beta - 1.96 * se
             ci_upper = beta + 1.96 * se
             
-        except:
+        except Exception:
             logger.warning("Could not calculate standard errors for logistic mixed model")
             se = np.full_like(beta, np.nan)
             z_stats = np.full_like(beta, np.nan)

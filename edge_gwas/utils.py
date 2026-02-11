@@ -1606,6 +1606,31 @@ def filter_variants_by_hwe(
     return genotype_df_filtered
 
 
+def calculate_genomic_inflation(pvals: Union[pd.Series, np.ndarray]) -> float:
+    """
+    Calculate genomic inflation factor (lambda_gc) from GWAS p-values.
+
+    Lambda_gc is the ratio of the median observed chi-squared statistic
+    to the expected median under the null (0.456 for 1 df). Values > 1
+    suggest inflation (population structure, relatedness); values < 1
+    can suggest deflation.
+
+    Args:
+        pvals: Array-like of p-values (can contain NaN; those are excluded)
+
+    Returns:
+        float: Genomic inflation factor (lambda_gc)
+    """
+    pvals = np.asarray(pvals, dtype=float)
+    pvals = pvals[np.isfinite(pvals)]
+    pvals = pvals[(pvals > 0) & (pvals <= 1)]
+    if len(pvals) == 0:
+        return np.nan
+    chisq = stats.chi2.ppf(1 - pvals, df=1)
+    lambda_gc = np.median(chisq) / stats.chi2.ppf(0.5, df=1)
+    return float(lambda_gc)
+
+
 def standard_gwas(
     genotype_df: pd.DataFrame,
     phenotype_df: pd.DataFrame,

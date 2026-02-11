@@ -67,7 +67,7 @@ def load_alpha_values(alpha_file: str) -> pd.DataFrame:
             if 'variant_id' in alpha_df.columns and 'alpha_value' in alpha_df.columns:
                 logger.info(f"Successfully loaded {len(alpha_df)} alpha values")
                 return alpha_df
-        except:
+        except Exception:
             continue
     
     raise ValueError(f"Could not load alpha values from {alpha_file}")
@@ -190,6 +190,10 @@ def format_gwas_output_for_locuszoom(
             formatted_df = formatted_df.sort_values(sort_by, ascending=ascending)
         
         return formatted_df
+
+
+# Public API alias (exported as format_gwas_output in __init__.py)
+format_gwas_output = format_gwas_output_for_locuszoom
 
 
 def save_for_locuszoom(
