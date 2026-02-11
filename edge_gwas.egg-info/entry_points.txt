@@ -1,0 +1,3 @@
+[console_scripts]
+edge-gwas-check-tools = edge_gwas.check_tools:main
+edge-gwas-install-tools = edge_gwas.install_tools:main
