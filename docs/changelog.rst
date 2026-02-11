@@ -159,7 +159,7 @@ Bug Fixes
 Version 0.1.0 (2025-12-24)
 --------------------------
 
-**Status:** Superseded by v0.1.1
+**Status:** Superseded by v0.1.2
 
 Initial Release
 ~~~~~~~~~~~~~~~
@@ -228,7 +228,7 @@ Original EDGE implementation as standalone Python scripts.
 
 .. warning::
    Version 0.0.0 is **deprecated** and no longer maintained.
-   Users should migrate to v0.1.1 or later.
+   Users should migrate to v0.1.2 or later.
 
 ---
 
@@ -243,9 +243,13 @@ Version History Summary
      - Date
      - Status
      - Key Features
-   * - 0.1.1
-     - 2025-12-25
+   * - 0.1.2
+     - 2026-02-10
      - **Current**
+     - Bug fixes, format_gwas_output, calculate_genomic_inflation, tests with PDF reports
+   * - 0.1.1
+     - 2025-12-27
+     - Superseded
      - GRM support, PCA methods, outcome transformations, pandas migration
    * - 0.1.0
      - 2025-12-24
@@ -278,6 +282,6 @@ See Also
 
 ---
 
-*Last updated: 2025-12-28 for edge-gwas v0.1.1*
+*Last updated: 2026-02-10 for edge-gwas v0.1.2*
 
 *For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues

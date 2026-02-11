@@ -412,7 +412,7 @@ def create_summary_report(
 
 def download_test_files(
     output_dir: str = 'tests',
-    version: str = 'v0.1.1',
+    version: str = 'v0.1.2',
     overwrite: bool = False,
     verbose: bool = True
 ) -> dict:
@@ -421,7 +421,7 @@ def download_test_files(
     
     Args:
         output_dir: Directory to save test files (default: 'tests')
-        version: GitHub release version tag (default: 'v0.1.1')
+        version: GitHub release version tag (default: 'v0.1.2')
         overwrite: If True, overwrite existing files (default: False)
         verbose: Print download progress (default: True)
     

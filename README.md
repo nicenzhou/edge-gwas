@@ -2,7 +2,7 @@
 
 # edge-gwas: A Python Package for Flexible Genetic Encoding in GWAS
 
-[![Version](https://img.shields.io/badge/version-0.1.1-green.svg)](https://github.com/nicenzhou/edge-gwas/releases)
+[![Version](https://img.shields.io/badge/version-0.1.2-green.svg)](https://github.com/nicenzhou/edge-gwas/releases)
 [![Documentation](https://readthedocs.org/projects/edge-gwas/badge/?version=latest)](https://edge-gwas.readthedocs.io)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
@@ -31,7 +31,7 @@ EDGE (Elastic Data-Driven Genetic Encoding) discovers nonadditive SNP effects by
 
 ```bash
 # Install latest stable version
-pip install git+https://github.com/nicenzhou/edge-gwas.git@v0.1.1
+pip install git+https://github.com/nicenzhou/edge-gwas.git@v0.1.2
 
 # Install external tools (PLINK2, GCTA, R packages)
 edge-gwas-install-tools
@@ -151,7 +151,7 @@ where:
 
 ---
 
-## What's New in v0.1.1
+## What's New in v0.1.2
 
 **New Features:**
 - GRM support for mixed models
@@ -236,7 +236,7 @@ If you use edge-gwas, please cite:
 
 ---
 
-*Last updated: 2025-12-28 for edge-gwas v0.1.1*
+*Last updated: 2026-02-10 for edge-gwas v0.1.2*
 
 *For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues
 

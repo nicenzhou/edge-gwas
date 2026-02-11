@@ -904,7 +904,7 @@ pip install edge-gwas --require-hashes
 pip install edge-gwas --index-url https://pypi.org/simple
 
 # Or from official GitHub
-pip install git+https://github.com/nicenzhou/edge-gwas.git@v0.1.1
+pip install git+https://github.com/nicenzhou/edge-gwas.git@v0.1.2
 ```
 
 ## Frequently Asked Questions
