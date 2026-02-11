@@ -1,6 +1,7 @@
 # How to push edge-gwas v0.1.2 to GitHub and publish a release
 
-Your repo already has the v0.1.2 commit and tag locally. Follow these steps to push to `main` and create the GitHub release.
+The **whole project** is in the repo: README, docs, tests, examples. The tag **v0.1.2** points to the latest commit (full sync).  
+**tests/output/** is in `.gitignore` so generated PDFs/PNGs are never uploaded—only source and docs go to GitHub.
 
 ---
 
@@ -118,14 +119,25 @@ pip install git+https://github.com/nicenzhou/edge-gwas@v0.1.2
 
 ---
 
-## Quick copy-paste (minimal: push existing v0.1.2)
+## Quick copy-paste: push full folder and release v0.1.2
 
-If you only want to push the current commit and tag without new commits:
+**1. Push main** (whole folder, no `tests/output/`—it’s gitignored):
 
 ```bash
 cd /Users/nicen/edge/edge-gwas
 git push origin main
+```
+
+**2. Push the tag** (v0.1.2 points to the full sync commit; README and all files included):
+
+```bash
 git push origin v0.1.2
 ```
 
-Then create the release on the GitHub website (step 4, Option A).
+If the tag already exists on GitHub and you moved it to the latest commit, use:
+
+```bash
+git push origin v0.1.2 --force
+```
+
+**3. Create the release** on GitHub: https://github.com/nicenzhou/edge-gwas/releases → “Draft a new release” → choose tag **v0.1.2** → Publish. The “Source code (zip)” download will be the full project without `tests/output/`.
