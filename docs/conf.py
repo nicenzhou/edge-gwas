@@ -7,8 +7,8 @@ copyright = '2025, edge-gwas Contributors'
 author = 'Jiayan Zhou'
 
 # The full version, including alpha/beta/rc tags
-release = '0.1.1'
-version = '0.1.1'
+release = '0.1.2'
+version = '0.1.2'
 
 # -- General configuration ---------------------------------------------------
 extensions = [
@@ -222,10 +222,10 @@ nitpick_ignore = [
 
 # -- Version warning ---------------------------------------------------------
 # Add version warning for older versions
-if version != '0.1.1':
+if version != '0.1.2':
     html_theme_options['announcement'] = (
         f'<b>Warning:</b> You are viewing documentation for version {version}. '
-        f'The latest version is 0.1.1. '
+        f'The latest version is 0.1.2. '
         f'<a href="https://edge-gwas.readthedocs.io/en/latest/">View latest docs</a>.'
     )
 

@@ -292,7 +292,7 @@ Data Loading
    :returns: DataFrame with sample IDs as index, outcome and covariates as columns
    :rtype: pd.DataFrame
 
-.. function:: download_test_files(output_dir='tests', version='v0.1.1', overwrite=False, verbose=True)
+.. function:: download_test_files(output_dir='tests', version='v0.1.2', overwrite=False, verbose=True)
 
    Download test files from GitHub repository.
 
@@ -1020,6 +1020,6 @@ See Also
 
 ---
 
-*Last updated: 2025-12-28 for edge-gwas v0.1.1*
+*Last updated: 2026-02-10 for edge-gwas v0.1.2*
 
 *For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues

@@ -3,7 +3,7 @@
 Example Workflows
 =================
 
-This page provides complete, real-world examples of EDGE GWAS analysis including new v0.1.1 features.
+This page provides complete, real-world examples of EDGE GWAS analysis including new v0.1.2 features.
 
 Example 1: Basic Binary Outcome Analysis with PCA
 --------------------------------------------------
@@ -42,7 +42,7 @@ Complete workflow for case-control study with population structure control.
        sample_id_col='IID'
    )
    
-   # 2. Calculate PCA for population structure (NEW in v0.1.1)
+   # 2. Calculate PCA for population structure (available in v0.1.2)
    print("Calculating principal components...")
    pca_df = calculate_pca_plink(
        plink_prefix='data/chr1',
@@ -139,7 +139,7 @@ Analysis of continuous phenotype with rank-based inverse normal transformation.
        genotype_df, phenotype_df, 'BMI', test_size=0.5, is_binary=False
    )
    
-   # Run analysis with continuous outcome and transformation (NEW in v0.1.1)
+   # Run analysis with continuous outcome and transformation (available in v0.1.2)
    edge = EDGEAnalysis(
        outcome_type='continuous',
        outcome_transform='rank_inverse_normal',  # NEW: Apply RINT
@@ -182,7 +182,7 @@ Control for population structure and relatedness using GRM.
        'phenotypes.txt', 'disease', ['age', 'sex']
    )
    
-   # Calculate GRM for population structure control (NEW in v0.1.1)
+   # Calculate GRM for population structure control (available in v0.1.2)
    print("Calculating GRM...")
    grm_prefix = calculate_grm_gcta(
        plink_prefix='data',
@@ -194,7 +194,7 @@ Control for population structure and relatedness using GRM.
    # Load GRM
    grm_matrix, grm_ids = load_grm_gcta('output/grm')
    
-   # Calculate PC-AiR (accounts for relatedness)  (NEW in v0.1.1)
+   # Calculate PC-AiR (accounts for relatedness)  (available in v0.1.2)
    print("Calculating PC-AiR...")
    pca_df = calculate_pca_pcair(
        plink_prefix='data',
@@ -211,7 +211,7 @@ Control for population structure and relatedness using GRM.
        genotype_df, phenotype_df, 'disease', test_size=0.5
    )
    
-   # Run EDGE with GRM (NEW in v0.1.1)
+   # Run EDGE with GRM (available in v0.1.2)
    edge = EDGEAnalysis(outcome_type='binary', n_jobs=8)
    
    alpha_df, gwas_df = edge.run_full_analysis(
@@ -247,7 +247,7 @@ Load data from different genetic file formats.
        fam_file='data.fam'
    )
    
-   # Option 2: Load PLINK 2 format (.pgen/.pvar/.psam) - NEW in v0.1.1
+   # Option 2: Load PLINK 2 format (.pgen/.pvar/.psam) - available in v0.1.2
    print("Loading PGEN format...")
    geno2, info2 = load_pgen_data(
        pgen_file='data.pgen',
@@ -255,14 +255,14 @@ Load data from different genetic file formats.
        psam_file='data.psam'
    )
    
-   # Option 3: Load BGEN format - NEW in v0.1.1
+   # Option 3: Load BGEN format - available in v0.1.2
    print("Loading BGEN format...")
    geno3, info3 = load_bgen_data(
        bgen_file='data.bgen',
        sample_file='data.sample'  # Optional
    )
    
-   # Option 4: Load VCF format - NEW in v0.1.1
+   # Option 4: Load VCF format - available in v0.1.2
    print("Loading VCF format...")
    geno4, info4 = load_vcf_data(
        vcf_file='data.vcf.gz',
@@ -320,21 +320,21 @@ Detailed QC with all available filters.
    # QC Step 2: Filter by missingness
    genotype_df = filter_variants_by_missing(genotype_df, max_missing=0.05, verbose=True)
    
-   # QC Step 3: Filter by HWE (NEW in v0.1.1)
+   # QC Step 3: Filter by HWE (available in v0.1.2)
    genotype_df = filter_variants_by_hwe(genotype_df, hwe_threshold=1e-6, verbose=True)
    
-   # QC Step 4: Filter samples by call rate (NEW in v0.1.1)
+   # QC Step 4: Filter samples by call rate (available in v0.1.2)
    genotype_df, phenotype_df = filter_samples_by_call_rate(
        genotype_df, phenotype_df, min_call_rate=0.95, verbose=True
    )
    
-   # QC Step 5: Check case/control balance (NEW in v0.1.1)
+   # QC Step 5: Check case/control balance (available in v0.1.2)
    balance = check_case_control_balance(phenotype_df, 'disease', verbose=True)
    
    if balance['ratio'] < 0.1 or balance['ratio'] > 10:
        print(f"Warning: Imbalanced case/control ratio: {balance['ratio']:.2f}")
    
-   # QC Step 6: Check for related samples (NEW in v0.1.1)
+   # QC Step 6: Check for related samples (available in v0.1.2)
    print("\nChecking for related samples...")
    grm_prefix = calculate_grm_gcta('data', output_prefix='qc/grm')
    grm_matrix, grm_ids = load_grm_gcta('qc/grm')
@@ -387,7 +387,7 @@ Compare EDGE results with traditional additive model.
        covariates=['age', 'sex'] + [f'PC{i}' for i in range(1, 11)]
    )
    
-   # Run standard additive GWAS (NEW in v0.1.1)
+   # Run standard additive GWAS (available in v0.1.2)
    print("Running additive GWAS for comparison...")
    additive_results = additive_gwas(
        genotype_df=test_g,
@@ -503,7 +503,7 @@ Use k-fold cross-validation to assess alpha stability.
    import pandas as pd
    from edge_gwas.utils import cross_validated_edge_analysis
    
-   # Run cross-validated analysis (NEW in v0.1.1)
+   # Run cross-validated analysis (available in v0.1.2)
    print("Running 5-fold cross-validation...")
    avg_alpha, meta_gwas, all_alpha, all_gwas = cross_validated_edge_analysis(
        genotype_df=genotype_df,
@@ -577,7 +577,7 @@ Use k-fold cross-validation to assess alpha stability.
    plt.savefig('alpha_stability.png', dpi=300)
    plt.close()
 
-Example 8: Complete Analysis with All v0.1.1 Features
+Example 8: Complete Analysis with All v0.1.2 Features
 ------------------------------------------------------
 
 Comprehensive workflow using GRM, PCA, outcome transformation, and quality control.
@@ -602,7 +602,7 @@ Comprehensive workflow using GRM, PCA, outcome transformation, and quality contr
    from edge_gwas.visualize import manhattan_plot, qq_plot, plot_alpha_distribution
    
    print("="*70)
-   print("EDGE-GWAS v0.1.1 - Complete Analysis Pipeline")
+   print("EDGE-GWAS v0.1.2 - Complete Analysis Pipeline")
    print("="*70)
    
    # Step 1: Load data
@@ -1368,7 +1368,7 @@ Tips and Best Practices
 Data Preparation
 ~~~~~~~~~~~~~~~~
 
-1. **Sample ID Consistency** (NEW in v0.1.1):
+1. **Sample ID Consistency** (available in v0.1.2):
 
    .. code-block:: python
    
@@ -1380,7 +1380,7 @@ Data Preparation
       common = set(genotype_df.index) & set(phenotype_df.index)
       print(f"Common samples: {len(common)}")
 
-2. **Population Structure Control** (NEW in v0.1.1):
+2. **Population Structure Control** (available in v0.1.2):
 
    .. code-block:: python
    
@@ -1394,7 +1394,7 @@ Data Preparation
       grm_prefix = calculate_grm_gcta('genotypes')
       pca_df = calculate_pca_pcair('genotypes', kinship_matrix=grm_prefix)
 
-3. **Outcome Transformation** (NEW in v0.1.1):
+3. **Outcome Transformation** (available in v0.1.2):
 
    .. code-block:: python
    
@@ -1479,7 +1479,7 @@ Analysis Strategy
    - Suggestive threshold: p < 1e-5
    - Check genomic inflation (λ should be 0.95-1.05)
 
-4. **GRM Usage Decision Tree** (NEW in v0.1.1):
+4. **GRM Usage Decision Tree** (available in v0.1.2):
 
    .. code-block:: python
    
@@ -1517,7 +1517,7 @@ Performance Optimization
           del geno
           gc.collect()
 
-3. **Use Approximate PCA for Large Cohorts** (NEW in v0.1.1):
+3. **Use Approximate PCA for Large Cohorts** (available in v0.1.2):
 
    .. code-block:: python
    
@@ -1529,7 +1529,7 @@ Performance Optimization
           approx_samples=5000
       )
 
-4. **Sparse GRM for Large Datasets** (NEW in v0.1.1):
+4. **Sparse GRM for Large Datasets** (available in v0.1.2):
 
    .. code-block:: python
    
@@ -1639,6 +1639,6 @@ See Also
 
 ---
 
-*Last updated: 2025-12-28 for edge-gwas v0.1.1*
+*Last updated: 2026-02-10 for edge-gwas v0.1.2*
 
 *For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues

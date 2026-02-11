@@ -133,7 +133,7 @@ A: Troubleshooting high λ (>1.05):
 
 A: Current options:
 
-1. **Remove related individuals** (recommended for v0.1.1):
+1. **Remove related individuals** (recommended for v0.1.2):
 
    .. code-block:: python
    
@@ -391,7 +391,7 @@ A: Storage requirements:
 
 **Q18: Can I use EDGE with X chromosome variants?**
 
-A: Limited support in v0.1.1:
+A: Limited support in v0.1.2:
 
 .. code-block:: python
 
@@ -521,6 +521,6 @@ See Also
 
 ---
 
-*Last updated: 2025-12-28 for edge-gwas v0.1.1*
+*Last updated: 2026-02-10 for edge-gwas v0.1.2*
 
 *For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues

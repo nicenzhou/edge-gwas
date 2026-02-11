@@ -3,7 +3,7 @@
 Quick Start Guide
 =================
 
-This guide demonstrates a complete EDGE GWAS analysis in minutes using v0.1.1 features.
+This guide demonstrates a complete EDGE GWAS analysis in minutes using v0.1.2 features.
 
 Overview
 --------
@@ -456,6 +456,6 @@ See Also
 
 ---
 
-*Last updated: 2025-12-28 for edge-gwas v0.1.1*
+*Last updated: 2026-02-10 for edge-gwas v0.1.2*
 
 *For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues

@@ -18,9 +18,9 @@ Welcome to edge-gwas Documentation
 using flexible genetic encoding, rather than assuming additive inheritance.
 
 .. warning::
-   ⚠️ **Current Version 0.1.1** - Under Public Testing
-   
-   **Recommended to use v0.1.1 - more stable and more functions.**
+   ⚠️ **Current Version 0.1.2** - Under Public Testing
+
+   **Recommended to use v0.1.2 - more stable and more functions.**
 
 .. note::
    The original EDGE implementation (v0.0.0) is available at 
@@ -98,6 +98,6 @@ See Also
 
 ---
 
-*Last updated: 2025-12-28 for edge-gwas v0.1.1*
+*Last updated: 2026-02-10 for edge-gwas v0.1.2*
 
 *For questions or issues, visit:* https://github.com/nicenzhou/edge-gwas/issues
