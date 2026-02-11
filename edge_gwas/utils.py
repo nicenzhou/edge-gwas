@@ -61,15 +61,18 @@ def _ensure_minor_allele_is_alt(
     flipped_variants = []
     
     for variant_id in genotype_df.columns:
-        # Calculate allele frequency for ALT allele
+        # Calculate allele frequency for ALT allele (single column in case of duplicate names)
         geno = genotype_df[variant_id]
+        if isinstance(geno, pd.DataFrame):
+            geno = geno.iloc[:, 0]
         valid_geno = geno.dropna()
         
         if len(valid_geno) == 0:
             continue
         
-        # ALT allele frequency (currently coded as 2)
+        # ALT allele frequency (currently coded as 2) - ensure scalar for comparison
         alt_freq = (2 * (valid_geno == 2).sum() + (valid_geno == 1).sum()) / (2 * len(valid_geno))
+        alt_freq = float(alt_freq)
         
         # If ALT allele frequency > 0.5, it's actually the major allele
         # We need to flip it so minor allele becomes ALT
@@ -498,10 +501,15 @@ def load_vcf_data(
     ref_alleles_list = []
     alt_alleles_list = []
     
-    # Read variants
+    # Read variants (ensure unique variant_id for DataFrame columns)
+    from collections import Counter
+    variant_id_counts = Counter()
     for variant in vcf:
         # Get variant information
         variant_id = variant.ID if variant.ID else f"{variant.CHROM}:{variant.POS}"
+        variant_id_counts[variant_id] += 1
+        if variant_id_counts[variant_id] > 1:
+            variant_id = f"{variant_id}_dup{variant_id_counts[variant_id]}"
         variant_ids_list.append(variant_id)
         chromosomes_list.append(variant.CHROM)
         positions_list.append(variant.POS)
@@ -604,14 +612,16 @@ def load_vcf_data(
     maf_list = []
     for variant_id in genotype_df.columns:
         geno = genotype_df[variant_id]
+        if isinstance(geno, pd.DataFrame):
+            geno = geno.iloc[:, 0]
         valid_geno = geno.dropna()
         if len(valid_geno) > 0:
             if dosage:
                 # For dosage data - ensure scalar
-                alt_freq = np.mean(valid_geno.values) / 2  # FIXED: Use np.mean on .values
+                alt_freq = float(np.mean(valid_geno.values) / 2)
             else:
-                # For hard calls
-                alt_freq = (2 * (valid_geno == 2).sum() + (valid_geno == 1).sum()) / (2 * len(valid_geno))
+                # For hard calls - ensure scalar
+                alt_freq = float((2 * (valid_geno == 2).sum() + (valid_geno == 1).sum()) / (2 * len(valid_geno)))
             maf = min(alt_freq, 1 - alt_freq)
         else:
             maf = np.nan
@@ -619,8 +629,10 @@ def load_vcf_data(
     
     variant_info_df['MAF'] = maf_list
     
-    if verbose:
-        logger.info(f"MAF range: {variant_info_df['MAF'].min():.4f} - {variant_info_df['MAF'].max():.4f}")
+    if verbose and len(maf_list) > 0:
+        maf_vals = variant_info_df['MAF'].dropna()
+        if len(maf_vals) > 0:
+            logger.info(f"MAF range: {maf_vals.min():.4f} - {maf_vals.max():.4f}")
     
     return genotype_df, variant_info_df
 

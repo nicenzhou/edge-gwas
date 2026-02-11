@@ -358,8 +358,9 @@ def create_summary_report(
             report_lines.append("Top significant variants:")
             top_variants = significant.nsmallest(10, 'pval')
             for idx, row in top_variants.iterrows():
-                report_lines.append(f"    {row['variant_id']}: p={row['pval']:.2e}, "
-                                  f"coef={row['coef']:.4f}")
+                vid_val = row.get('variant_id', idx)
+                coef_val = row.get('coef', np.nan)
+                report_lines.append(f"    {vid_val}: p={row['pval']:.2e}, coef={coef_val:.4f}")
         
         # Genomic inflation
         from .utils import calculate_genomic_inflation
@@ -376,9 +377,10 @@ def create_summary_report(
         if 'alpha_value' in alpha_df.columns:
             valid_alpha = alpha_df['alpha_value'].dropna()
             report_lines.append(f"  Valid alpha values: {len(valid_alpha)}")
-            report_lines.append(f"  Mean alpha: {valid_alpha.mean():.4f}")
-            report_lines.append(f"  Median alpha: {valid_alpha.median():.4f}")
-            report_lines.append(f"  Alpha range: [{valid_alpha.min():.4f}, {valid_alpha.max():.4f}]")
+            if len(valid_alpha) > 0:
+                report_lines.append(f"  Mean alpha: {valid_alpha.mean():.4f}")
+                report_lines.append(f"  Median alpha: {valid_alpha.median():.4f}")
+                report_lines.append(f"  Alpha range: [{valid_alpha.min():.4f}, {valid_alpha.max():.4f}]")
             
             # Distribution of alpha values
             alpha_ranges = {
@@ -387,11 +389,12 @@ def create_summary_report(
                 'Recessive-like (< 0.4)': (valid_alpha < 0.4).sum()
             }
             
-            report_lines.append("")
-            report_lines.append("  Alpha value distribution:")
-            for range_name, count in alpha_ranges.items():
-                pct = count / len(valid_alpha) * 100
-                report_lines.append(f"    {range_name}: {count} ({pct:.1f}%)")
+            if len(valid_alpha) > 0:
+                report_lines.append("")
+                report_lines.append("  Alpha value distribution:")
+                for range_name, count in alpha_ranges.items():
+                    pct = count / len(valid_alpha) * 100
+                    report_lines.append(f"    {range_name}: {count} ({pct:.1f}%)")
     
     report_lines.append("")
     report_lines.append("=" * 80)
